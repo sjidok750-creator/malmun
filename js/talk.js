@@ -18,7 +18,7 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
     const head = el('header', 'talk-head');
     const back = h('button', { class: 'icon-btn', 'aria-label': '나가기', onclick: () => endTalk(true) }, icon('back'));
     const who = el('div', 'who');
-    who.append(charBadge(rp.ai_name, voice, 40), h('div', null, h('b', null, rp.ai_name), el('small', '', title || rp.title_ko || '')));
+    who.append(charBadge(rp.ai_name, voice, 38, !!rp.photo), h('div', null, h('b', null, rp.ai_name), el('small', '', title || rp.title_ko || '')));
     const hf = h('button', { class: 'chip-btn', 'aria-pressed': String(handsFree), title: '내 차례가 되면 자동으로 듣기', onclick: () => { handsFree = !handsFree; S.handsFree = handsFree; save(); hf.setAttribute('aria-pressed', String(handsFree)); toast(handsFree ? '자동 듣기 켬 — 답을 다 들으면 바로 마이크가 켜져요' : '자동 듣기 끔'); } }, '자동 듣기');
     const endBtn = h('button', { class: 'chip-btn', onclick: () => endTalk(false) }, '끝내기');
     head.append(back, who, h('div', { class: 'head-r' }, hf, endBtn));
@@ -66,7 +66,7 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
     }
     function meNode(m) {
       const b = el('div', 'msg me');
-      const t = el('div', 't', m.text); b.append(t);
+      const t = el('div', 't', m.text); if (!/[가-힯]/.test(m.text)) t.lang = 'en'; b.append(t);
       if (m.fix && m.fix.better && S.feedbackAt === 'end') b.append(el('div', 'fix-later', '고칠 점은 대화 끝에 보여 드려요'));
       else if (m.fix && m.fix.better) {
         const f = el('div', 'fix');

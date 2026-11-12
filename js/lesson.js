@@ -1,7 +1,7 @@
 /* 말문 — 수업 한 개: 배우기(선생님) → 스피킹 연습 12문장 → 단어 짝 맞추기 → AI 롤플레이 → 결과 */
 import { S, save, h, el, icon, toast, chime, addXp, addCard, lessonFinished, shuffle } from './core.js';
 import * as V from './voice.js';
-import { speakCard, talkingFace, TEACHER } from './drill.js';
+import { speakCard, talkingFace, cover, stamp, charBadge, TEACHER } from './drill.js';
 import { openTalk } from './talk.js';
 import { levelOf } from './ai.js';
 
@@ -32,15 +32,15 @@ export function runLesson(root, lesson, { courseId, mode = 'full' } = {}) {
     async function intro() {
       root.textContent = '';
       const s = el('div', 'screen l-intro');
-      s.append(h('button', { class: 'icon-btn close-tl', 'aria-label': '닫기', onclick: () => resolveLesson({ quit: true }) }, icon('close')));
-      const face = talkingFace(96);
-      s.append(face, el('div', 'kicker', '오늘 배울 것'), el('h1', '', lesson.title), el('p', 'goal', lesson.goal_ko));
+      const cv = cover('intro-img');
+      cv.append(h('button', { class: 'icon-btn close-tl', 'aria-label': '닫기', onclick: () => resolveLesson({ quit: true }) }, icon('close')));
+      s.append(cv, el('div', 'kicker', '오늘 배울 것'), el('h1', '', lesson.title), el('p', 'goal', lesson.goal_ko));
       const steps = el('ol', 'steps');
-      [['배우기', '핵심 표현 3개'], ['스피킹 연습', lesson.practice.length + '문장 말하기'], ['단어', '짝 맞추기'], ['롤플레이', 'AI 와 미션 대화']].forEach(([a, b]) => steps.append(h('li', null, h('b', null, a), el('span', '', b))));
+      [['배우기', '핵심 표현 3개'], ['스피킹 연습', lesson.practice.length + '문장 말하기'], ['단어', '짝 맞추기'], ['롤플레이', 'AI 와 미션 대화']].forEach(([a, b], i) => steps.append(h('li', null, el('i', 'num', '0' + (i + 1)), h('b', null, a), el('span', '', b))));
       s.append(steps);
       const go = h('button', { class: 'btn primary wide big' }, '시작하기');
-      const listenBtn = h('button', { class: 'btn ghost wide' }, icon('play', 18), ' 듣기 모드 — 말하지 않고 듣기만');
-      s.append(go, listenBtn, el('p', 'fine', '선생님 목소리는 AI 로 만든 목소리예요(Supertonic 3).'));
+      const listenBtn = h('button', { class: 'btn ghost wide' }, icon('play', 16), ' 듣기 모드 — 말하지 않고 듣기만');
+      s.append(go, listenBtn, el('p', 'fine', '선생님 목소리는 AI 로 만든 목소리예요.'));
       root.append(s);
       const pick = await new Promise(r => { go.addEventListener('click', () => { V.unlock(); r('go'); }, { once: true }); listenBtn.addEventListener('click', () => { V.unlock(); r('listen'); }, { once: true }); });
       if (pick === 'listen') { await runListen(root, lesson); quit = true; resolveLesson({ quit: true, listened: true }); }
@@ -52,12 +52,10 @@ export function runLesson(root, lesson, { courseId, mode = 'full' } = {}) {
         const b = F(`배우기 ${i + 1}/${lesson.learn.length}`);
         const t = el('div', 'teacher');
         const bubble = el('div', 'bubble', it.note_ko);
-        t.append(talkingFace(64), h('div', null, el('div', 'tname', TEACHER.name), bubble));
-        const ph = el('div', 'phrase');
-        ph.append(h('div', { class: 'en', lang: 'en' }, it.en), el('div', 'ko', it.ko));
-        if (it.pattern) ph.append(h('div', { class: 'pattern-chip', lang: 'en' }, '틀  ' + it.pattern));
-        b.append(t, ph);
-        const r = speakCard(b, { type: 'repeat', en: it.en, ko: '', alts: [] }, { autoPlay: false, label: '선생님을 따라 말해 보세요' });
+        t.append(talkingFace(44), h('div', null, el('div', 'tname', TEACHER.name), bubble));
+        b.append(t);
+        if (it.pattern) b.append(h('div', { class: 'pattern-chip' }, el('i', '', '틀'), h('span', { lang: 'en' }, it.pattern)));
+        const r = speakCard(b, { type: 'repeat', en: it.en, ko: it.ko, alts: [] }, { autoPlay: false, label: '유나를 따라 말해 보세요', showKo: true });
         (async () => { if (await V.say(it.note_ko, { lang: 'ko', voice: TEACHER.voice })) await V.say(it.en, { lang: 'en', voice: TEACHER.voice }); })();
         const res = await r;
         addCard(it.en, it.ko, lesson.id);
@@ -113,7 +111,9 @@ export function runLesson(root, lesson, { courseId, mode = 'full' } = {}) {
       if (!rp) { step++; return { missionsDone: [], fixes: [], turns: 0 }; }
       const b = F('롤플레이');
       const card = el('div', 'rp-intro');
-      card.append(el('h2', '', '실전 대화'), el('p', 'scene-t', rp.scene_ko), el('p', 'scene-r', '내 역할: ' + (rp.user_role_ko || '나')));
+      card.append(el('h2', '', '실전 대화'),
+        h('div', { class: 'rp-who' }, charBadge(rp.ai_name, rp.ai_voice, 40, !!rp.photo), h('div', null, h('b', null, rp.ai_name), el('small', '', '대화 상대'))),
+        el('p', 'scene-t', rp.scene_ko), el('p', 'scene-r', '내 역할: ' + (rp.user_role_ko || '나')));
       const ml = el('div', 'missions big');
       rp.missions.forEach((m, i) => ml.append(h('div', { class: 'mission' }, h('i', null, String(i + 1)), h('span', null, m.ko))));
       card.append(el('div', 'sub', '미션'), ml, el('p', 'fine', '마이크를 누르고 말하면 상대가 대답해요. 막히면 「가」 버튼으로 한국어로 물어보세요.'));
@@ -138,11 +138,10 @@ export function runLesson(root, lesson, { courseId, mode = 'full' } = {}) {
       const info = lessonFinished(lesson.id, { stars, score: Math.round(ratio * 100) });
       root.textContent = '';
       const s = el('div', 'screen result');
-      const st = el('div', 'stars'); for (let i = 0; i < 3; i++) st.append(h('span', { class: i < stars ? 'on' : '' }, icon('star', 34, true)));
-      s.append(st, el('h2', '', '수업 완료!'), el('p', 'sub', lesson.title));
+      s.append(stamp(stars), el('h2', '', '수업 완료!'), el('p', 'sub', lesson.title));
       const g = el('div', 'res-grid');
       g.append(h('div', null, h('b', null, '+' + xp), el('span', '', 'XP')), h('div', null, h('b', null, Math.round(ratio * 100) + '%'), el('span', '', '한 번에 맞힘')),
-        h('div', null, h('b', null, missionsAll ? mDone + '/' + missionsAll : '-'), el('span', '', '미션')), h('div', { class: 'flame' + (info.grew ? ' grew' : '') }, h('b', null, icon('flame', 20, true), String(info.streak)), el('span', '', '일 연속')));
+        h('div', null, h('b', null, missionsAll ? mDone + '/' + missionsAll : '–'), el('span', '', '미션')), h('div', { class: 'flame' + (info.grew ? ' grew' : '') }, h('b', null, String(info.streak)), el('span', '', '일 연속')));
       s.append(g);
       if (info.revived) s.append(el('p', 'good', '불꽃을 되살렸어요! 연속 기록이 이어집니다.'));
       if (info.usedFreeze) s.append(el('p', 'good', `불꽃 지키기 ${info.usedFreeze}개로 놓친 날을 메웠어요.`));
@@ -151,7 +150,7 @@ export function runLesson(root, lesson, { courseId, mode = 'full' } = {}) {
       /* 오늘의 핵심 */
       const take = el('div', 'takeaways');
       take.append(el('h3', '', '오늘의 핵심'));
-      lesson.learn.forEach(x => take.append(h('div', { class: 'take' }, h('div', null, h('div', { class: 'en', lang: 'en' }, x.en), el('div', 'ko', x.ko), x.pattern ? h('div', { class: 'pattern-chip', lang: 'en' }, '틀  ' + x.pattern) : ''),
+      lesson.learn.forEach(x => take.append(h('div', { class: 'take' }, h('div', null, h('div', { class: 'en', lang: 'en' }, x.en), el('div', 'ko', x.ko), x.pattern ? h('div', { class: 'pattern-chip' }, el('i', '', '틀'), h('span', { lang: 'en' }, x.pattern)) : ''),
         h('button', { class: 'icon-btn', 'aria-label': '듣기', onclick: () => V.say(x.en, { lang: 'en', voice: TEACHER.voice }) }, icon('play')))));
       s.append(take);
       /* 난이도 묻기 → 다음 추천이 바뀐다 */
@@ -202,7 +201,7 @@ export async function runListen(root, lesson) {
   const close = h('button', { class: 'icon-btn', 'aria-label': '그만 듣기', onclick: () => { stop = true; V.stop(); } }, icon('close'));
   const bar = el('div', 'progress'); const fill = el('i'); bar.append(fill);
   top.append(close, bar);
-  const face = talkingFace(110);
+  const face = talkingFace(132);
   const ko = el('div', 'l-ko'), en = h('div', { class: 'l-en', lang: 'en' }), stage = el('div', 'l-stage');
   const pauseBtn = h('button', { class: 'btn ghost wide', onclick: () => { paused = !paused; pauseBtn.textContent = paused ? '이어 듣기' : '잠깐 멈춤'; if (paused) V.stop(); } }, '잠깐 멈춤');
   s.append(top, el('div', 'l-kicker', '듣기 모드 · ' + lesson.title), face, ko, en, stage, pauseBtn, el('p', 'fine', '화면이 켜진 채로 이어 들어요. 영어가 나온 뒤 틈에 따라 말해 보세요.'));

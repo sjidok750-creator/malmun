@@ -1,4 +1,4 @@
-/* 말문 — 말하기 카드(따라 말하기·한국어 보고 말하기·틀에 넣어 말하기)와 선생님 그림 */
+/* 말문 — 말하기 카드(따라 말하기·한국어 보고 말하기·틀에 넣어 말하기)와 얼굴(유나 사진)·도장 */
 import { h, el, icon, chime, toast, S, sheet, addCard } from './core.js';
 import { best, align } from './match.js';
 import * as V from './voice.js';
@@ -29,40 +29,63 @@ export function askTutor(item) {
   };
 }
 
-export const TEACHER = { name: '소라 쌤', voice: 'F2' };
+export const TEACHER = { name: '유나', voice: 'F2' };
+const FACE = 'img/yuna-face.jpg', COVER = 'img/yuna.jpg';
 
-/* ---------- 선생님(새로 그린 그림, 말할 때 입이 움직임) ---------- */
-export function teacherFace(size = 64) {
-  const NS = 'http://www.w3.org/2000/svg';
-  const s = document.createElementNS(NS, 'svg');
-  s.setAttribute('viewBox', '0 0 100 100'); s.setAttribute('width', size); s.setAttribute('height', size); s.classList.add('face');
-  s.innerHTML = `
-    <circle cx="50" cy="50" r="50" fill="#FFE3D3"/>
-    <path d="M18 58c0-26 13-40 32-40s32 14 32 40c0 10-3 22-7 30H25c-4-8-7-20-7-30z" fill="#2B2A33"/>
-    <ellipse cx="50" cy="55" rx="23" ry="26" fill="#F9CDB3"/>
-    <path d="M27 50c2-15 11-24 24-24 12 0 20 7 23 20-9-2-18-8-23-15-5 9-14 16-24 19z" fill="#2B2A33"/>
-    <ellipse cx="41" cy="56" rx="2.6" ry="3.2" fill="#2B2A33"/><ellipse cx="59" cy="56" rx="2.6" ry="3.2" fill="#2B2A33"/>
-    <ellipse cx="35" cy="64" rx="4" ry="2.4" fill="#FF9F86" opacity=".55"/><ellipse cx="65" cy="64" rx="4" ry="2.4" fill="#FF9F86" opacity=".55"/>
-    <path class="mouth" d="M44 68q6 5 12 0" fill="none" stroke="#B4413A" stroke-width="2.6" stroke-linecap="round"/>
-    <path d="M22 96c4-10 15-15 28-15s24 5 28 15" fill="#FF5A36"/>`;
-  return s;
+/* ---------- 얼굴: 선생님 유나(사진). 말하는 동안 테두리 고리 + 막대 표시 ---------- */
+const talkEls = new Set();
+V.onTalk(on => talkEls.forEach(f => { if (!f.isConnected) { talkEls.delete(f); return; } f.classList.toggle('talking', !!on); }));
+export function avatar(size = 44) {
+  const a = el('span', 'av');
+  a.style.width = a.style.height = size + 'px';
+  a.append(h('img', { src: FACE, alt: TEACHER.name, width: size, height: size, decoding: 'async' }), h('i', { class: 'eq' }, el('b'), el('b'), el('b')));
+  talkEls.add(a);
+  return a;
 }
-let talkFaces = new Set(), talkT = 0;
-V.onTalk(on => {
-  clearInterval(talkT);
-  const set = open => talkFaces.forEach(f => { if (!f.isConnected) { talkFaces.delete(f); return; } const m = f.querySelector('.mouth'); if (m) m.setAttribute('d', open ? 'M44 67q6 8 12 0q-6 3-12 0z' : 'M44 68q6 5 12 0'); });
-  if (on) { let o = false; talkT = setInterval(() => { o = !o; set(o); }, 140); } else set(false);
-});
-export function talkingFace(size) { const f = teacherFace(size); talkFaces.add(f); return f; }
+export const talkingFace = avatar;
+/* 큰 사진(표지) */
+export function cover(cls = '') {
+  const c = el('div', 'cover' + (cls ? ' ' + cls : ''));
+  c.append(h('img', { src: COVER, alt: '', decoding: 'async' }));
+  return c;
+}
 
-/* 원 안 머리글자로 그린 상대 캐릭터 */
-const PAL = ['#0E7C7B', '#6D5BD0', '#D9480F', '#1C7ED6', '#C2255C', '#2F9E44', '#E67700', '#5C7CFA', '#0B7285', '#862E9C'];
-export function charBadge(name, voice, size = 44) {
+/* 대화 상대: 유나면 사진, 아니면 머리글자 원(차분한 색) */
+const PAL = ['#26382F', '#3B3F63', '#7A3B2E', '#1F4E5F', '#5B3A5E', '#4A5D23', '#8A5A19', '#2D4B73', '#6B2D3E', '#3D3D3D'];
+export function charBadge(name, voice, size = 44, photo = false) {
+  if (photo) return avatar(size);
   const i = Math.abs(Array.from(name || '?').reduce((a, c) => a * 31 + c.charCodeAt(0), 3)) % PAL.length;
-  const b = el('div', 'badge', (name || '?').slice(0, 1).toUpperCase());
-  b.style.background = PAL[i]; b.style.width = b.style.height = size + 'px'; b.style.fontSize = Math.round(size * 0.44) + 'px';
-  talkFaces.add(b);
+  const b = el('span', 'badge', (name || '?').slice(0, 1).toUpperCase());
+  b.style.background = PAL[i]; b.style.width = b.style.height = size + 'px'; b.style.fontSize = Math.round(size * 0.46) + 'px';
+  b.append(h('i', { class: 'eq' }, el('b'), el('b'), el('b')));
+  talkEls.add(b);
   void voice; return b;
+}
+
+/* 수업 완료 도장 — grade 1~3 */
+export function stamp(grade) {
+  const txt = [['', '해냈어요'], ['', '잘했어요'], ['참', '잘했어요']][Math.max(1, Math.min(3, grade)) - 1];
+  const d = new Date();
+  const date = d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0');
+  const w = el('div', 'stamp');
+  w.setAttribute('role', 'img'); w.setAttribute('aria-label', (txt[0] ? txt[0] + ' ' : '') + txt[1]);
+  w.innerHTML = `<svg viewBox="0 0 200 200" width="148" height="148" aria-hidden="true">
+    <defs>
+      <path id="stampArc" d="M100,100 m-76,0 a76,76 0 1,1 152,0 a76,76 0 1,1 -152,0"/>
+      <filter id="stampInk" x="-5%" y="-5%" width="110%" height="110%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="11" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -2.6 0 0 0 2.25" result="m"/>
+        <feComposite in="SourceGraphic" in2="m" operator="in"/>
+      </filter>
+    </defs>
+    <g filter="url(#stampInk)" fill="currentColor">
+      <circle cx="100" cy="100" r="94" fill="none" stroke="currentColor" stroke-width="5"/>
+      <circle cx="100" cy="100" r="59" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <text class="st-ring" font-size="14.5" textLength="462" lengthAdjust="spacing"><textPath href="#stampArc" startOffset="2">MALMUN · SPEAK IT OUT · ${date} ·</textPath></text>
+      ${txt[0] ? `<text class="st-main" x="100" y="88" text-anchor="middle" font-size="24">${txt[0]}</text><text class="st-main" x="100" y="121" text-anchor="middle" font-size="27">${txt[1]}</text>`
+        : `<text class="st-main" x="100" y="110" text-anchor="middle" font-size="28">${txt[1]}</text>`}
+    </g></svg>`;
+  return w;
 }
 
 /* 낱말 줄(초록 = 들림, 주황 = 비슷함, 회색 = 아직, 빨강 = 안 들림) */
@@ -100,16 +123,17 @@ export function speakCard(host, item, opts = {}) {
   const label = el('div', 'sc-label', opts.label || (type === 'repeat' ? '들은 대로 따라 말해 보세요' : type === 'pattern' ? '틀에 넣어 영어로 말해 보세요' : type === 'fix' ? '더 자연스럽게 고쳐 말해 보세요' : '영어로 말해 보세요'));
   const prompt = el('div', 'sc-prompt');
   const lineBox = el('div', 'sc-line');
+  const subBox = el('div', 'sc-sub');   // 따라 말하기: 영어 아래 한국어 뜻
   const heardBox = el('div', 'sc-heard');
   const fb = el('div', 'sc-fb');
   const ctr = el('div', 'sc-ctr');
-  card.append(label, prompt, lineBox, heardBox, fb, ctr);
+  card.append(label, prompt, lineBox, subBox, heardBox, fb, ctr);
   host.append(card);
 
   const showTarget = () => type === 'repeat' || finished || tries >= maxTries || (result && result.pass);
   function renderPrompt() {
     prompt.textContent = '';
-    if (type === 'repeat') { if (S.showKo) prompt.append(el('div', 'ko', item.ko)); }
+    if (type === 'repeat') { subBox.textContent = (S.showKo || opts.showKo) && item.ko ? item.ko : ''; }
     else if (type === 'pattern') {
       prompt.append(h('div', { class: 'pattern', lang: 'en' }, ...String(item.pattern || '').split('___').flatMap((p, i, a) => i < a.length - 1 ? [p, h('span', { class: 'blank' }, item.cue_ko || '…')] : [p])));
       prompt.append(el('div', 'ko small', item.ko));
@@ -204,8 +228,11 @@ export function speakCard(host, item, opts = {}) {
   function endButtons(fail) {
     mic.disabled = true; skipBtn.disabled = true; hintBtn.disabled = true;
     const go = h('button', { class: 'btn primary wide', onclick: () => finish(false) }, '계속');
-    const again = fail ? null : h('button', { class: 'btn ghost', onclick: () => { mic.disabled = false; result = null; fb.textContent = ''; heardBox.textContent = ''; renderLine(); again.remove(); go.remove(); skipBtn.disabled = false; } }, '한 번 더');
-    fb.append(h('div', { class: 'fb-btns' }, again, go));
+    /* 끝나면 마이크 줄 자리에 '계속' 을 둔다(엄지가 있던 자리) */
+    const row = h('div', { class: 'fb-btns' });
+    const again = fail ? null : h('button', { class: 'btn ghost', onclick: () => { mic.disabled = false; hintBtn.disabled = false; result = null; fb.textContent = ''; heardBox.textContent = ''; renderLine(); row.remove(); ctr.hidden = false; skipBtn.disabled = false; } }, '한 번 더');
+    row.append(again || '', go);
+    ctr.hidden = true; ctr.after(row);
     go.focus({ preventScroll: true });
     if (opts.autoNext && !fail) setTimeout(() => { if (!finished && go.isConnected) finish(false); }, 1400);
   }

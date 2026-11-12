@@ -155,6 +155,7 @@ const ICONS = {
   slow: 'M12 8v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
   close: 'M6 6l12 12M18 6L6 18',
   back: 'M15 5l-7 7 7 7',
+  arrow: 'M5 12h13M12.5 6.5L18 12l-5.5 5.5',
   check: 'M5 12l5 5 9-10',
   flame: 'M12 2.5c.6 3.2 2.6 4.8 4.2 6.8 1.3 1.6 2.3 3.4 2.3 5.6A6.5 6.5 0 0 1 12 21.5a6.5 6.5 0 0 1-6.5-6.6c0-2.6 1.3-4.6 2.9-6.1-.1 1.9.6 3.2 1.9 3.9-.2-3.9 .6-7.2 1.7-10.2z',
   star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z',
@@ -178,7 +179,7 @@ export function icon(name, size = 22, fill = false) {
   s.setAttribute('aria-hidden', 'true'); s.classList.add('ic');
   const p = document.createElementNS(NS, 'path'); p.setAttribute('d', ICONS[name] || '');
   p.setAttribute('fill', fill ? 'currentColor' : 'none'); p.setAttribute('stroke', 'currentColor');
-  p.setAttribute('stroke-width', '2'); p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round');
+  p.setAttribute('stroke-width', '1.8'); p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round');
   s.append(p); return s;
 }
 let toastT = 0;

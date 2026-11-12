@@ -1,20 +1,21 @@
 /* 말문 — 탭 화면: 홈(코스)·복습·AI 튜터·내 정보 */
 import { S, save, h, el, icon, toast, sheet, streak, revival, todayXp, level, dueCards, gradeCard, mastery, addXp, lessonFinished, resetAll, KEY, today, addDays, chime, cardId } from './core.js';
 import * as V from './voice.js';
-import { speakCard, talkingFace, charBadge, TEACHER } from './drill.js';
+import { speakCard, talkingFace, charBadge, cover, avatar, TEACHER } from './drill.js';
 import { MODELS, callJSON, errText, hasKey, levelOf, QA_SCHEMA, qaPrompt, RP_SCHEMA, rpPrompt, LESSON_SCHEMA, lessonPrompt } from './ai.js';
 
 export const nav = {};   // main.js 가 채움: openLesson(lesson, courseId), openCheck(course), openTalk(rp, opts), go(tab), course
 
-/* ---------- 머리 띠(불꽃·오늘 XP·레벨) ---------- */
-function topBar() {
-  const lv = level(), xp = todayXp(), goal = S.dailyXp;
-  const ring = el('div', 'ring');
-  ring.style.setProperty('--p', Math.min(100, Math.round((xp / goal) * 100)));
-  ring.append(el('b', '', String(xp)), el('small', '', '/' + goal));
-  return h('div', { class: 'topbar' },
-    h('div', { class: 'brand' }, h('b', null, '말문'), el('small', '', 'Lv.' + lv.lv)),
-    h('div', { class: 'tb-r' }, h('div', { class: 'streak' + (streak() ? ' on' : ''), title: '연속 학습일' + (S.freezes ? ` · 불꽃 지키기 ${S.freezes}개` : '') }, icon('flame', 20, true), h('b', null, String(streak())), S.freezes ? el('small', 'fz', '지키기 ' + S.freezes) : ''), ring));
+/* ---------- 머리 띠: 홈은 워드마크, 다른 탭은 화면 제목 + 불꽃·오늘 XP ---------- */
+function topBar(title) {
+  const lv = level(), xp = todayXp(), goal = S.dailyXp, st = streak();
+  const meter = el('i', 'meter'); const f = el('b'); f.style.width = Math.min(100, Math.round((xp / goal) * 100)) + '%'; meter.append(f);
+  return h('header', { class: 'topbar' },
+    title ? h('h1', { class: 'page-t' }, title)
+      : h('div', { class: 'brand' }, h('b', { class: 'wordmark' }, '말문', el('i', 'dot')), el('small', '', 'Lv.' + lv.lv)),
+    h('div', { class: 'tb-r' },
+      h('div', { class: 'streak' + (st ? ' on' : ''), title: '연속 학습일' + (S.freezes ? ` · 불꽃 지키기 ${S.freezes}개` : '') }, icon('flame', 15, true), h('b', null, String(st)), el('small', '', '일')),
+      h('div', { class: 'today-xp', title: '오늘 XP / 하루 목표' }, h('span', null, h('b', null, String(xp)), el('small', '', '/' + goal + ' XP')), meter)));
 }
 
 export function allLessons() { const out = []; nav.course.courses.forEach(c => c.units.forEach(u => u.lessons.forEach(l => out.push({ c, u, l })))); return out; }
@@ -31,35 +32,41 @@ export function home(root) {
   const s = el('div', 'screen tab home');
   s.append(topBar());
   const rv = revival();
-  if (rv) s.append(h('div', { class: 'banner flame' }, icon('flame', 20, true), h('div', null, h('b', null, '불꽃 살리기'), el('div', '', `어제를 놓쳤어요. 오늘 수업 2개를 끝내면 연속 기록이 이어져요 (${Math.min(2, rv.doneToday)}/2)`))));
+  if (rv) s.append(h('div', { class: 'banner flame' }, icon('flame', 18, true), h('div', null, h('b', null, '불꽃 살리기'), el('div', '', `어제를 놓쳤어요. 오늘 수업 2개를 끝내면 연속 기록이 이어져요 (${Math.min(2, rv.doneToday)}/2)`))));
   const nx = nextLesson();
   if (nx) {
     const card = h('button', { class: 'today', onclick: () => nav.openLesson(nx.l, nx.c.id) });
-    card.append(h('div', { class: 'today-t' }, el('small', '', '오늘의 수업 · ' + nx.c.title + ' · ' + nx.u.title), h('b', null, nx.l.title), el('span', '', nx.l.goal_ko)), talkingFace(72));
+    card.append(cover('today-img'), h('div', { class: 'today-t' },
+      el('small', '', '오늘의 수업 · ' + nx.c.title + ' · ' + nx.u.title),
+      h('b', null, nx.l.title), el('span', 'goal', nx.l.goal_ko),
+      h('span', { class: 'cta' }, h('em', null, '수업 시작', icon('arrow', 16)), el('i', '', '약 10분'))));
     s.append(card);
-  } else s.append(h('div', { class: 'today done' }, h('div', { class: 'today-t' }, h('b', null, '모든 수업을 마쳤어요!'), el('span', '', 'AI 튜터에서 나만의 수업을 만들어 보세요.'))));
+  } else s.append(h('div', { class: 'today done' }, cover('today-img'), h('div', { class: 'today-t' }, el('small', '', '모든 수업 완료'), h('b', null, '모든 수업을 마쳤어요'), el('span', 'goal', 'AI 튜터에서 나만의 수업을 만들어 보세요.'))));
   const due = dueCards().length;
-  s.append(h('button', { class: 'review-cta' + (due ? ' due' : ''), onclick: () => nav.go('review') }, icon('review'), h('div', null, h('b', null, due ? `복습할 문장 ${due}개` : '복습할 문장이 없어요'), el('small', '', '스마트 복습 — 잊을 때쯤 다시 말해 봐요')), icon('back', 18)));
+  s.append(h('button', { class: 'review-cta' + (due ? ' due' : ''), onclick: () => nav.go('review') }, h('b', { class: 'n' }, String(due)),
+    h('div', null, h('b', null, due ? '복습할 문장이 기다려요' : '복습할 문장이 없어요'), el('small', '', '스마트 복습 — 잊을 때쯤 다시 말해 봐요')), icon('arrow', 18)));
 
-  nav.course.courses.forEach(c => {
+  nav.course.courses.forEach((c, ci) => {
     const sec = el('section', 'course');
     const cnt = c.units.reduce((a, u) => a + u.lessons.filter(l => S.done[l.id]).length, 0), all = c.units.reduce((a, u) => a + u.lessons.length, 0);
-    sec.append(h('div', { class: 'course-h' }, h('div', null, h('b', null, c.title), el('small', '', c.level + ' · ' + c.desc_ko)), el('span', 'cnt', cnt + '/' + all)));
+    sec.append(h('div', { class: 'course-h' },
+      h('div', null, el('small', 'over', `COURSE ${String(ci + 1).padStart(2, '0')} · ${c.level}`), h('b', null, c.title), el('small', '', c.desc_ko)),
+      h('span', { class: 'cnt' }, h('b', null, String(cnt)), '/' + all)));
     c.units.forEach((u, ui) => {
       const box = el('div', 'unit');
-      box.append(el('div', 'unit-t', `${ui + 1}단원 · ${u.title}`));
+      box.append(h('div', { class: 'unit-t' }, el('i', '', `${ui + 1}단원`), u.title));
       u.lessons.forEach((l, li) => {
-        const d = S.done[l.id];
-        const row = h('button', { class: 'lrow' + (d ? ' done' : '') + (nx && nx.l.id === l.id ? ' next' : ''), onclick: () => nav.openLesson(l, c.id) },
-          h('i', { class: 'num' }, d ? icon('check', 16) : String(li + 1)), h('div', null, h('b', null, l.title), el('small', '', l.goal_ko)),
-          d ? h('span', { class: 'mini-stars' }, ...[0, 1, 2].map(k => h('span', { class: k < d.stars ? 'on' : '' }, icon('star', 13, true)))) : '');
+        const d = S.done[l.id], isNext = nx && nx.l.id === l.id;
+        const row = h('button', { class: 'lrow' + (d ? ' done' : '') + (isNext ? ' next' : ''), onclick: () => nav.openLesson(l, c.id) },
+          h('i', { class: 'num' }, d ? icon('check', 16) : String(li + 1).padStart(2, '0')), h('div', null, h('b', null, l.title), el('small', '', l.goal_ko)),
+          d ? h('span', { class: 'marks', title: `별 ${d.stars}개` }, ...[0, 1, 2].map(k => el('i', k < d.stars ? 'on' : ''))) : isNext ? el('span', 'tag', '다음') : '');
         box.append(row);
       });
       sec.append(box);
     });
     const ck = S.checks[c.id];
     sec.append(h('button', { class: 'lrow check' + (ck && ck.pass ? ' done' : ''), onclick: () => nav.openCheck(c) }, h('i', { class: 'num' }, icon('target', 16)),
-      h('div', null, h('b', null, '실력 체크'), el('small', '', ck ? `최고 ${ck.score}점 · ${ck.pass ? '통과' : '75점 이상이면 통과'}` : '이 코스를 힌트 없이 말할 수 있는지 확인해요'))));
+      h('div', null, h('b', null, '실력 체크'), el('small', '', ck ? `최고 ${ck.score}점 · ${ck.pass ? '통과' : '75점 이상이면 통과'}` : '이 코스를 힌트 없이 말할 수 있는지 확인해요')), icon('arrow', 16)));
     s.append(sec);
   });
   root.append(s);
@@ -69,10 +76,10 @@ export function home(root) {
 export function review(root) {
   root.textContent = '';
   const s = el('div', 'screen tab review');
-  s.append(topBar());
+  s.append(topBar('복습'));
   const due = dueCards(), all = Object.values(S.cards);
   const head = el('div', 'rev-head');
-  head.append(h('div', null, h('b', null, `오늘 복습 ${due.length}개`), el('small', '', `모은 문장 ${all.length}개 · 잊을 때쯤 다시 나와요`)));
+  head.append(h('div', { class: 'rev-n' }, h('b', null, String(due.length)), h('span', null, h('b', null, '오늘 복습할 문장'), el('small', '', `모은 문장 ${all.length}개 · 잊을 때쯤 다시 나와요`))));
   const go = h('button', { class: 'btn primary', disabled: !due.length, onclick: () => runReview(root, due.slice(0, 15)) }, '복습 시작');
   head.append(go);
   s.append(head);
@@ -164,20 +171,21 @@ const TOPICS = [
   ['커피 vs 차', 'coffee or tea and your daily routine'], ['반려동물', 'pets'], ['요즘 고민', 'something you are thinking about lately (light topics)'],
   ['한국 소개하기', 'introducing Korea to a foreign friend'], ['출퇴근', 'commuting'], ['좋아하는 계절', 'your favorite season'], ['음악', 'music you listen to'],
 ];
-const TUTOR_RP = { ai_name: 'Ellie', ai_voice: 'F3', ai_role: 'a friendly English conversation partner from Portland who is curious about Korea' };
+const TUTOR_RP = { ai_name: 'Yuna', ai_voice: 'F2', photo: true, ai_role: 'Yuna, 25, a cheerful marketer who grew up between Seoul and Tokyo and now helps Korean friends practise English. Loves music (she always has her earphones in), cafés and evening walks by the river. Warm, upbeat and a good listener' };
 
 export function tutor(root) {
   root.textContent = '';
   const s = el('div', 'screen tab tutor');
-  s.append(topBar());
-  if (!hasKey()) s.append(h('div', { class: 'banner' }, icon('sparkle'), h('div', null, h('b', null, 'AI 튜터는 Claude API 키가 필요해요'), el('div', '', '내 정보 → 설정에서 키를 넣어 주세요. 키는 이 기기에만 저장돼요.'))));
+  s.append(topBar('AI 튜터'));
+  if (!hasKey()) s.append(h('div', { class: 'banner' }, icon('sparkle', 18), h('div', null, h('b', null, 'AI 튜터는 Claude API 키가 필요해요'), el('div', '', '내 정보 → 설정에서 키를 넣어 주세요. 키는 이 기기에만 저장돼요.'))));
   const grid = el('div', 'tgrid');
-  const tile = (ic, t, d, fn) => h('button', { class: 'ttile', onclick: fn }, icon(ic, 26), h('b', null, t), el('small', '', d));
-  grid.append(
-    tile('tutor', '프리토킹', '주제를 골라 자유롭게', () => pickTopic()),
-    tile('target', '롤플레이 만들기', '내가 겪을 상황을 연습', () => makeRp()),
-    tile('book', '문법·표현 질문', '헷갈리는 것을 한국어로', () => qa(root)),
-    tile('sparkle', '나만의 수업', '주제·내 실수로 수업 생성', () => makeLesson()));
+  const hero = h('button', { class: 'ttile hero', onclick: () => pickTopic() }, cover('tt-img'),
+    h('span', { class: 'tt-t' }, el('small', '', 'FREE TALK'), h('b', null, '프리토킹'), el('span', '', '유나와 주제를 골라 자유롭게 이야기해요'), h('em', null, '주제 고르기', icon('arrow', 16))));
+  const tile = (n, t, d, fn) => h('button', { class: 'ttile', onclick: fn }, el('i', 'num', n), h('span', { class: 'tt-t' }, h('b', null, t), el('small', '', d)), icon('arrow', 16));
+  grid.append(hero,
+    tile('01', '롤플레이 만들기', '내가 겪을 상황을 적으면 상대·미션을 만들어요', () => makeRp()),
+    tile('02', '문법·표현 질문', '헷갈리는 것을 한국어로 물어보세요', () => qa(root)),
+    tile('03', '나만의 수업', '주제나 내 실수로 수업 하나를 만들어요', () => makeLesson()));
   s.append(grid);
 
   if (S.custom.length) {
@@ -202,8 +210,8 @@ export function tutor(root) {
     body.append(own);
   }
   function startFree(ko, en) {
-    const opener = `Hi! I'm Ellie. Let's chat about ${en}. So, tell me, what comes to mind first?`;
-    nav.openTalk({ ...TUTOR_RP, title_ko: '프리토킹 · ' + ko, scene_ko: `엘리와 「${ko}」 이야기를 나눠요. 틀려도 괜찮아요, 고칠 문장은 알려 줄게요.`, user_role_ko: '나', opener, opener_ko: `안녕하세요! 저는 엘리예요. ${ko} 이야기를 해 봐요. 먼저 떠오르는 게 뭐예요?`, missions: [], useful: [{ en: 'Let me think.', ko: '생각 좀 해 볼게요.' }, { en: 'How do you say that in English?', ko: '그걸 영어로 뭐라고 해요?' }, { en: 'Could you say that again, please?', ko: '다시 말해 줄래요?' }] }, { kind: 'free' });
+    const opener = `Hi! I'm Yuna. Let's chat about ${en}. So, tell me, what comes to mind first?`;
+    nav.openTalk({ ...TUTOR_RP, title_ko: '프리토킹 · ' + ko, scene_ko: `유나와 「${ko}」 이야기를 나눠요. 틀려도 괜찮아요, 고칠 문장은 알려 줄게요.`, user_role_ko: '나', opener, opener_ko: `안녕하세요! 저는 유나예요. ${ko} 이야기를 해 봐요. 먼저 떠오르는 게 뭐예요?`, missions: [], useful: [{ en: 'Let me think.', ko: '생각 좀 해 볼게요.' }, { en: 'How do you say that in English?', ko: '그걸 영어로 뭐라고 해요?' }, { en: 'Could you say that again, please?', ko: '다시 말해 줄래요?' }] }, { kind: 'free' });
   }
   function makeRp() {
     const body = el('div', 'gen');
@@ -305,27 +313,29 @@ function qa(root) {
 export function me(root) {
   root.textContent = '';
   const s = el('div', 'screen tab me');
-  s.append(topBar());
+  s.append(topBar('내 정보'));
   const lv = level();
   const doneN = Object.keys(S.done).length;
-  const spoken = Object.values(S.days).reduce((a, d) => a + d.xp, 0);
+  const lvBar = el('i', 'meter'); const lf = el('b'); lf.style.width = Math.round((lv.into / lv.need) * 100) + '%'; lvBar.append(lf);
+  s.append(h('div', { class: 'me-lv' }, h('div', null, el('small', '', 'LEVEL'), h('b', null, String(lv.lv))), h('div', { class: 'me-lv-r' }, el('span', '', `다음 레벨까지 ${lv.need - lv.into} XP` + (S.freezes ? ` · 불꽃 지키기 ${S.freezes}개` : '')), lvBar)));
   s.append(h('div', { class: 'stats' },
-    h('div', null, h('b', null, 'Lv.' + lv.lv), el('small', '', `다음 레벨까지 ${lv.need - lv.into} XP`)),
     h('div', null, h('b', null, String(streak())), el('small', '', '일 연속')),
     h('div', null, h('b', null, String(doneN)), el('small', '', '끝낸 수업')),
+    h('div', null, h('b', null, String(Object.keys(S.cards).length)), el('small', '', '모은 문장')),
     h('div', null, h('b', null, String(S.xp)), el('small', '', '전체 XP'))));
-  void spoken;
-  /* 최근 5주 달력 */
+  /* 최근 5주 달력(월요일 시작) */
   const cal = el('div', 'cal');
+  ['월', '화', '수', '목', '금', '토', '일'].forEach(d => cal.append(el('span', 'wd', d)));
   const t = today();
   const start = addDays(t, -34 - ((new Date().getDay() + 6) % 7) + 6);
   for (let i = 0; i < 35; i++) {
     const k = addDays(start, i); const d = S.days[k];
-    const c = el('i', d && d.lessons ? (d.xp >= S.dailyXp ? 'lv2' : 'lv1') : S.repaired.includes(k) ? 'rep' : '');
+    const c = el('i', d && d.lessons ? (d.xp >= S.dailyXp ? 'lv2' : 'lv1') : S.repaired.includes(k) ? 'rep' : (S.frozen || []).includes(k) ? 'frz' : '');
     if (k === t) c.classList.add('today'); if (k > t) c.classList.add('future');
     c.title = k + (d ? ` · ${d.xp} XP` : ''); cal.append(c);
   }
-  s.append(el('h3', 'sec', '최근 5주'), cal);
+  s.append(el('h3', 'sec', '최근 5주'), cal,
+    h('div', { class: 'cal-key' }, el('i', 'lv2'), '목표 달성', el('i', 'lv1'), '수업함', el('i', 'frz'), '불꽃 지키기', el('i', 'rep'), '되살림'));
 
   s.append(el('h3', 'sec', '설정'));
   const set = el('div', 'settings');
