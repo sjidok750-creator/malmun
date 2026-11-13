@@ -13,7 +13,9 @@ const DEF = {
   turnMode: 'auto',         // 말 끝: auto(멈추면 끝) | manual(직접 끝내기)
   feedbackAt: 'now',        // 대화 교정: now(바로) | end(대화 끝에)
   freezes: 0, frozen: [],   // 불꽃 지키기: 가진 개수, 쓴 날짜
-  done: {},                 // lessonId → { at, stars, best }
+  usage: { days: {}, total: 0 },   // API 사용량(이 기기에서 잰 추정): 날짜 → { calls, in, out, usd }
+  budget: 20,               // 월 예산(달러, 표시·알림용. 0 = 없음)
+  done: {},               // lessonId → { at, stars, best }
   days: {},                 // 'YYYY-MM-DD' → { xp, lessons }
   repaired: [],             // 되살린 날짜
   lastLessonAt: 0,
@@ -129,6 +131,38 @@ export function gradeCard(id, ok) {
 }
 export const mastery = c => Math.round((c.box / 6) * 100);
 
+/* ---------- API 사용량: 이 기기의 말문이 부른 호출만 센다(추정). 실제 청구는 Anthropic 콘솔 ---------- */
+const ZERO = () => ({ calls: 0, in: 0, out: 0, usd: 0 });
+export function dayUsage(k = today()) { return { ...ZERO(), ...((S.usage && S.usage.days && S.usage.days[k]) || {}) }; }
+export function monthUsage(prefix = today().slice(0, 7)) {
+  const t = ZERO();
+  for (const [k, d] of Object.entries((S.usage && S.usage.days) || {})) if (k.startsWith(prefix)) { t.calls += d.calls || 0; t.in += d.in || 0; t.out += d.out || 0; t.usd += d.usd || 0; }
+  return t;
+}
+export const usageTotal = () => (S.usage && S.usage.total) || 0;
+export function addUsage(rec) {
+  if (!S.usage || !S.usage.days) S.usage = { days: {}, total: 0 };
+  const k = today(), before = monthUsage().usd;
+  const d = S.usage.days[k] || (S.usage.days[k] = ZERO());
+  d.calls++; d.in += rec.in || 0; d.out += rec.out || 0; d.usd += rec.usd || 0;
+  S.usage.total = (S.usage.total || 0) + (rec.usd || 0);
+  const keep = Object.keys(S.usage.days).sort().slice(-400);   // 400일까지만 보관
+  S.usage.days = Object.fromEntries(keep.map(x => [x, S.usage.days[x]]));
+  save();
+  const after = before + (rec.usd || 0), b = S.budget || 0, crossed = th => before < th - 1e-9 && after >= th - 1e-9;
+  if (b && crossed(b)) toast(`이번 달 API 예산 $${b} 을 넘었어요`, 4500);
+  else if (b && crossed(b * 0.8)) toast('이번 달 API 예산의 80% 를 썼어요', 4500);
+  try { window.dispatchEvent(new Event('malmun:usage')); } catch (e) { /* 화면 없는 환경 */ }
+}
+export function fmtUsd(v) {
+  if (!v) return '$0';
+  if (v < 0.001) return '<$0.001';
+  if (v < 0.1) return '$' + v.toFixed(3).replace(/0$/, '');
+  if (v < 100) return '$' + v.toFixed(2);
+  return '$' + Math.round(v);
+}
+export function fmtTok(n) { return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n || 0); }
+
 /* ---------- 화면 도우미 ---------- */
 export const $ = (s, r = document) => r.querySelector(s);
 export function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -156,6 +190,8 @@ const ICONS = {
   close: 'M6 6l12 12M18 6L6 18',
   back: 'M15 5l-7 7 7 7',
   arrow: 'M5 12h13M12.5 6.5L18 12l-5.5 5.5',
+  warn: 'M12 4.5l8.5 15h-17zM12 10.5v4M12 17.4v.2',
+  headphones: 'M4.5 14.5V12a7.5 7.5 0 0 1 15 0v2.5M4.5 14.5h2.8v5.5H5.6a1.1 1.1 0 0 1-1.1-1.1zM19.5 14.5h-2.8v5.5h1.7a1.1 1.1 0 0 0 1.1-1.1z',
   check: 'M5 12l5 5 9-10',
   flame: 'M12 2.5c.6 3.2 2.6 4.8 4.2 6.8 1.3 1.6 2.3 3.4 2.3 5.6A6.5 6.5 0 0 1 12 21.5a6.5 6.5 0 0 1-6.5-6.6c0-2.6 1.3-4.6 2.9-6.1-.1 1.9.6 3.2 1.9 3.9-.2-3.9 .6-7.2 1.7-10.2z',
   star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z',

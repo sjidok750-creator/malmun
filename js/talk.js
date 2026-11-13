@@ -1,5 +1,5 @@
 /* 말문 — AI 와 말로 하는 대화: 수업 롤플레이(미션 3개)·프리토킹·내가 만든 상황 */
-import { S, save, h, el, icon, toast, chime, addXp, addCard, sheet, cardId } from './core.js';
+import { S, save, h, el, icon, toast, chime, addXp, addCard, sheet, cardId, usageTotal, fmtUsd } from './core.js';
 import * as V from './voice.js';
 import { callJSON, turnPrompt, TURN_SCHEMA, replyStreamer, errText, hasKey } from './ai.js';
 import { charBadge, speakCard } from './drill.js';
@@ -18,7 +18,13 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
     const head = el('header', 'talk-head');
     const back = h('button', { class: 'icon-btn', 'aria-label': '나가기', onclick: () => endTalk(true) }, icon('back'));
     const who = el('div', 'who');
-    who.append(charBadge(rp.ai_name, voice, 38, !!rp.photo), h('div', null, h('b', null, rp.ai_name), el('small', '', title || rp.title_ko || '')));
+    /* 이 대화에 쓴 API 금액(추정)을 제목 옆에 작게 — 답이 올 때마다 갱신 */
+    const usd0 = usageTotal(), subTitle = title || rp.title_ko || '';
+    const spent = () => usageTotal() - usd0;
+    const whoSub = el('small', '', subTitle);
+    const onUse = () => { if (!whoSub.isConnected) { window.removeEventListener('malmun:usage', onUse); return; } whoSub.textContent = subTitle + (spent() > 0 ? ' · API ' + fmtUsd(spent()) : ''); };
+    window.addEventListener('malmun:usage', onUse);
+    who.append(charBadge(rp.ai_name, voice, 38, !!rp.photo), h('div', null, h('b', null, rp.ai_name), whoSub));
     const hf = h('button', { class: 'chip-btn', 'aria-pressed': String(handsFree), title: '내 차례가 되면 자동으로 듣기', onclick: () => { handsFree = !handsFree; S.handsFree = handsFree; save(); hf.setAttribute('aria-pressed', String(handsFree)); toast(handsFree ? '자동 듣기 켬 — 답을 다 들으면 바로 마이크가 켜져요' : '자동 듣기 끔'); } }, '자동 듣기');
     const endBtn = h('button', { class: 'chip-btn', onclick: () => endTalk(false) }, '끝내기');
     head.append(back, who, h('div', { class: 'head-r' }, hf, endBtn));
@@ -109,11 +115,11 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
       log.push({ who: 'me', text });
       renderLog();
       busy = true; bar.classList.add('busy');
-      const pend = el('div', 'msg them pending'); pend.append(el('div', 't', '…')); list.append(pend); scroll();
+      const pend = h('div', { class: 'msg them pending', 'aria-label': '답하는 중' }, h('div', { class: 't' }, h('i', { class: 'typing' }, el('b'), el('b'), el('b')))); list.append(pend); scroll();
       ctl = new AbortController();
       let q = null;
       const feed = replyStreamer((chunk, partial) => {
-        pend.querySelector('.t').textContent = partial || '…';
+        if (partial) { const t = pend.querySelector('.t'); t.textContent = partial; t.lang = /[가-힣]/.test(partial) ? 'ko' : 'en'; pend.classList.remove('pending'); }
         if (chunk) { if (!q) q = V.queue(voice, afterSpeak); q.push(chunk); }
         scroll();
       });
@@ -183,7 +189,7 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
       const fixes = log.filter(m => m.who === 'me' && m.fix).map(m => ({ said: m.text, ...m.fix }));
       if (leave && !silent && turns && !confirm('대화를 끝낼까요? 지금까지 한 내용은 저장돼요.')) return;
       ended = true;
-      if (turns) { S.talks.unshift({ at: Date.now(), kind, title: rp.title_ko || title || rp.ai_name, turns, fixes: fixes.length, missions: doneM.length + '/' + missions.length }); S.talks = S.talks.slice(0, 40); save(); }
+      if (turns) { S.talks.unshift({ at: Date.now(), kind, title: rp.title_ko || title || rp.ai_name, turns, fixes: fixes.length, missions: doneM.length + '/' + missions.length, usd: +spent().toFixed(5) }); S.talks = S.talks.slice(0, 40); save(); }
       if (silent || (leave && !turns)) { resolveTalk({ missionsDone: doneM, fixes, turns, ended: false, xp: xpGot }); return; }
       summary(turns, fixes);
     }
@@ -196,7 +202,7 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
         missions.forEach((m, i) => ml.append(h('div', { class: 'mission' + (doneM.includes(i) ? ' done' : '') }, h('i', null, doneM.includes(i) ? icon('check', 14) : String(i + 1)), h('span', null, m.ko))));
         s.append(ml);
       }
-      s.append(el('p', 'stat', `내가 한 말 ${turns}번 · 고친 문장 ${fixes.length}개` + (xpGot ? ` · +${xpGot} XP` : '')));
+      s.append(el('p', 'stat', `내가 한 말 ${turns}번 · 고친 문장 ${fixes.length}개` + (xpGot ? ` · +${xpGot} XP` : '') + (spent() > 0 ? ` · API ${fmtUsd(spent())}` : '')));
       if (fixes.length) {
         s.append(el('h3', '', '이렇게 말해 보세요 (복습에 넣었어요)'));
         fixes.forEach(f => s.append(h('div', { class: 'fix-card' }, h('div', { class: 'said' }, f.said), h('div', { class: 'better', lang: 'en' }, f.better), f.why ? el('div', 'why', f.why) : '',

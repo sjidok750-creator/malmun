@@ -1,8 +1,9 @@
 /* 말문 — 탭 화면: 홈(코스)·복습·AI 튜터·내 정보 */
-import { S, save, h, el, icon, toast, sheet, streak, revival, todayXp, level, dueCards, gradeCard, mastery, addXp, lessonFinished, resetAll, KEY, today, addDays, chime, cardId } from './core.js';
+import { S, save, h, el, icon, toast, sheet, streak, revival, todayXp, level, dueCards, gradeCard, mastery, addXp, lessonFinished, resetAll, KEY, today, addDays, chime, cardId, fmtUsd } from './core.js';
 import * as V from './voice.js';
-import { speakCard, talkingFace, charBadge, cover, avatar, TEACHER } from './drill.js';
+import { speakCard, talkingFace, charBadge, cover, avatar, progressBar, TEACHER } from './drill.js';
 import { MODELS, callJSON, errText, hasKey, levelOf, QA_SCHEMA, qaPrompt, RP_SCHEMA, rpPrompt, LESSON_SCHEMA, lessonPrompt } from './ai.js';
+import { usageStrip } from './usage.js';
 
 export const nav = {};   // main.js 가 채움: openLesson(lesson, courseId), openCheck(course), openTalk(rp, opts), go(tab), course
 
@@ -31,12 +32,23 @@ export function home(root) {
   root.textContent = '';
   const s = el('div', 'screen tab home');
   s.append(topBar());
+  /* 날짜 줄: 오늘 날짜 + 이번 주(월~일) 학습 표시 */
+  const now = new Date(), t0 = today(), start = addDays(t0, -((now.getDay() + 6) % 7));
+  const week = el('div', 'week');
+  ['월', '화', '수', '목', '금', '토', '일'].forEach((w, i) => {
+    const k = addDays(start, i), d = S.days[k];
+    const st = d && d.lessons ? ' w-on' : (S.frozen || []).includes(k) ? ' w-frz' : S.repaired.includes(k) ? ' w-rep' : '';
+    week.append(h('span', { class: 'wk' + st + (k === t0 ? ' w-today' : '') + (k > t0 ? ' w-future' : ''), title: k }, el('small', '', w), el('i')));
+  });
+  week.setAttribute('aria-label', '이번 주 학습');
+  s.append(h('div', { class: 'dateline' }, el('span', '', `${now.getMonth() + 1}월 ${now.getDate()}일 ${'일월화수목금토'[now.getDay()]}요일`), week));
   const rv = revival();
   if (rv) s.append(h('div', { class: 'banner flame' }, icon('flame', 18, true), h('div', null, h('b', null, '불꽃 살리기'), el('div', '', `어제를 놓쳤어요. 오늘 수업 2개를 끝내면 연속 기록이 이어져요 (${Math.min(2, rv.doneToday)}/2)`))));
   const nx = nextLesson();
   if (nx) {
     const card = h('button', { class: 'today', onclick: () => nav.openLesson(nx.l, nx.c.id) });
-    card.append(cover('today-img'), h('div', { class: 'today-t' },
+    const cv = cover('today-img'); cv.append(el('span', 'cap', 'with Yuna'));
+    card.append(cv, h('div', { class: 'today-t' },
       el('small', '', '오늘의 수업 · ' + nx.c.title + ' · ' + nx.u.title),
       h('b', null, nx.l.title), el('span', 'goal', nx.l.goal_ko),
       h('span', { class: 'cta' }, h('em', null, '수업 시작', icon('arrow', 16)), el('i', '', '약 10분'))));
@@ -52,6 +64,8 @@ export function home(root) {
     sec.append(h('div', { class: 'course-h' },
       h('div', null, el('small', 'over', `COURSE ${String(ci + 1).padStart(2, '0')} · ${c.level}`), h('b', null, c.title), el('small', '', c.desc_ko)),
       h('span', { class: 'cnt' }, h('b', null, String(cnt)), '/' + all)));
+    /* 코스 진행: 수업 하나가 한 칸(끝낸 수업 = 먹색) */
+    sec.append(h('div', { class: 'c-prog', 'aria-hidden': 'true' }, ...c.units.map(u => h('span', null, ...u.lessons.map(l => el('i', S.done[l.id] ? 'on' : ''))))));
     c.units.forEach((u, ui) => {
       const box = el('div', 'unit');
       box.append(h('div', { class: 'unit-t' }, el('i', '', `${ui + 1}단원`), u.title));
@@ -103,7 +117,7 @@ export function review(root) {
     if (mode === 'fix') cs = cs.filter(c => c.src === 'fix');
     if (mode === 'saved') cs = cs.filter(c => c.src === 'saved' || c.src === 'qa');
     cs.forEach(c => {
-      const bar = el('i', 'mbar'); const f = el('b'); f.style.width = Math.max(4, mastery(c)) + '%'; bar.append(f);
+      const bar = h('span', { class: 'mdots', title: `숙련도 ${mastery(c)}%` }, ...[1, 2, 3, 4, 5, 6].map(n => el('i', n <= c.box ? 'on' : '')));   // 6칸 가운데 채운 칸 = 숙련 단계
       listBox.append(h('div', { class: 'pcard' },
         h('div', { class: 'pc-t' }, h('div', { class: 'en', lang: 'en' }, c.en), el('div', 'ko', c.ko), h('div', { class: 'pc-m' }, bar, el('small', '', `숙련도 ${mastery(c)}% · 다음 ${c.due <= today() ? '오늘' : c.due.slice(5).replace('-', '/')}`))),
         h('div', { class: 'pc-b' }, h('button', { class: 'icon-btn', 'aria-label': '듣기', onclick: () => V.say(c.en, { lang: 'en', voice: TEACHER.voice }) }, icon('play')),
@@ -121,7 +135,7 @@ async function runFixDrill(root, list) {
   for (let i = 0; i < list.length && !quit; i++) {
     root.textContent = '';
     const scr = el('div', 'screen lesson');
-    const bar = el('div', 'progress'); const fill = el('i'); fill.style.width = Math.round((i / list.length) * 100) + '%'; bar.append(fill);
+    const bar = progressBar(i, list.length);
     scr.append(h('div', { class: 'l-top' }, h('button', { class: 'icon-btn', 'aria-label': '그만하기', onclick: () => { quit = true; V.stop(); V.abortListen(); nav.go('review'); } }, icon('close')), bar));
     const body = el('div', 'l-body'); body.append(el('div', 'l-kicker', `내 실수 고쳐 말하기 ${i + 1}/${list.length}`));
     scr.append(body); root.append(scr);
@@ -143,7 +157,7 @@ async function runReview(root, cards) {
   for (let i = 0; i < cards.length && !quit; i++) {
     root.textContent = '';
     const scr = el('div', 'screen lesson');
-    const bar = el('div', 'progress'); const fill = el('i'); fill.style.width = Math.round((i / cards.length) * 100) + '%'; bar.append(fill);
+    const bar = progressBar(i, cards.length);
     scr.append(h('div', { class: 'l-top' }, h('button', { class: 'icon-btn', 'aria-label': '그만하기', onclick: () => { quit = true; V.stop(); V.abortListen(); nav.go('review'); } }, icon('close')), bar));
     const body = el('div', 'l-body'); body.append(el('div', 'l-kicker', `스마트 복습 ${i + 1}/${cards.length}`));
     scr.append(body); root.append(scr);
@@ -177,7 +191,8 @@ export function tutor(root) {
   root.textContent = '';
   const s = el('div', 'screen tab tutor');
   s.append(topBar('AI 튜터'));
-  if (!hasKey()) s.append(h('div', { class: 'banner' }, icon('sparkle', 18), h('div', null, h('b', null, 'AI 튜터는 Claude API 키가 필요해요'), el('div', '', '내 정보 → 설정에서 키를 넣어 주세요. 키는 이 기기에만 저장돼요.'))));
+  if (hasKey()) s.append(usageStrip());
+  else s.append(h('div', { class: 'banner' }, icon('sparkle', 18), h('div', null, h('b', null, 'AI 튜터는 Claude API 키가 필요해요'), el('div', '', '내 정보 → 설정에서 키를 넣어 주세요. 키는 이 기기에만 저장돼요.'))));
   const grid = el('div', 'tgrid');
   const hero = h('button', { class: 'ttile hero', onclick: () => pickTopic() }, cover('tt-img'),
     h('span', { class: 'tt-t' }, el('small', '', 'FREE TALK'), h('b', null, '프리토킹'), el('span', '', '유나와 주제를 골라 자유롭게 이야기해요'), h('em', null, '주제 고르기', icon('arrow', 16))));
@@ -196,7 +211,7 @@ export function tutor(root) {
   }
   if (S.talks.length) {
     s.append(el('h3', 'sec', '지난 대화'));
-    S.talks.slice(0, 8).forEach(t => s.append(h('div', { class: 'talk-row' }, h('b', null, t.title), el('small', '', `${new Date(t.at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })} · 말 ${t.turns}번 · 고침 ${t.fixes}개` + (t.missions && t.missions !== '0/0' ? ' · 미션 ' + t.missions : '')))));
+    S.talks.slice(0, 8).forEach(t => s.append(h('div', { class: 'talk-row' }, h('b', null, t.title), el('small', '', `${new Date(t.at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })} · 말 ${t.turns}번 · 고침 ${t.fixes}개` + (t.missions && t.missions !== '0/0' ? ' · 미션 ' + t.missions : '') + (t.usd ? ' · API ' + fmtUsd(t.usd) : '')))));
   }
   root.append(s);
 
@@ -294,7 +309,7 @@ function qa(root) {
     if (!hasKey()) { toast('먼저 내 정보 → 설정에서 API 키를 넣어 주세요.', 3500); return; }
     inp.value = ''; busy = true;
     list.append(h('div', { class: 'msg me' }, el('div', 't', q)));
-    const pend = h('div', { class: 'msg them pending' }, el('div', 't', '생각하는 중…')); list.append(pend); list.scrollTop = list.scrollHeight;
+    const pend = h('div', { class: 'msg them pending', 'aria-label': '생각하는 중' }, h('div', { class: 't' }, h('i', { class: 'typing' }, el('b'), el('b'), el('b')))); list.append(pend); list.scrollTop = list.scrollHeight;
     try {
       const r = await callJSON(qaPrompt(q, log), QA_SCHEMA, { effort: 'low' });
       log.push({ who: 'me', text: q }, { who: 'them', text: r.answer_ko });
@@ -336,6 +351,8 @@ export function me(root) {
   }
   s.append(el('h3', 'sec', '최근 5주'), cal,
     h('div', { class: 'cal-key' }, el('i', 'lv2'), '목표 달성', el('i', 'lv1'), '수업함', el('i', 'frz'), '불꽃 지키기', el('i', 'rep'), '되살림'));
+
+  s.append(el('h3', 'sec', 'API 사용량'), usageStrip());
 
   s.append(el('h3', 'sec', '설정'));
   const set = el('div', 'settings');

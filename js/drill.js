@@ -62,6 +62,27 @@ export function charBadge(name, voice, size = 44, photo = false) {
   void voice; return b;
 }
 
+/* 진행줄: 칸 하나 = 문제 하나. phases(예: [배우기 3, 연습 12, 단어 1, 대화 1])가 있으면 구간 사이를 띄운다 */
+export function progressBar(step, total, phases) {
+  const bar = el('div', 'progress');
+  bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', String(total)); bar.setAttribute('aria-valuenow', String(step));
+  let n = 0;
+  (phases && phases.length ? phases : [total]).forEach(len => {
+    const g = el('span', 'pg'); g.style.flexGrow = String(len);
+    for (let i = 0; i < len; i++, n++) g.append(el('i', n < step ? 'on' : n === step ? 'now' : ''));
+    bar.append(g);
+  });
+  return bar;
+}
+/* 숫자가 0에서 올라가며 나타난다(결과 화면) */
+export function countUp(node, to, { prefix = '', suffix = '', ms = 700 } = {}) {
+  if (!Number.isFinite(to) || matchMedia('(prefers-reduced-motion: reduce)').matches) { node.textContent = prefix + to + suffix; return; }
+  const t0 = performance.now();
+  const tick = now => { const p = Math.min(1, (now - t0) / ms), v = Math.round(to * (1 - Math.pow(1 - p, 3))); node.textContent = prefix + v + suffix; if (p < 1 && node.isConnected) requestAnimationFrame(tick); else node.textContent = prefix + to + suffix; };
+  node.textContent = prefix + '0' + suffix; requestAnimationFrame(tick);
+}
+export const buzz = ms => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* 진동 없는 기기 */ } };
+
 /* 수업 완료 도장 — grade 1~3 */
 export function stamp(grade) {
   const txt = [['', '해냈어요'], ['', '잘했어요'], ['참', '잘했어요']][Math.max(1, Math.min(3, grade)) - 1];
@@ -118,7 +139,7 @@ export function speakCard(host, item, opts = {}) {
   let resolveCard;
   const done = new Promise(r => { resolveCard = r; });
 
-  const card = el('div', 'speak-card t-' + type);
+  const card = el('div', 'speak-card t-' + type + (opts.quote ? ' quote' : ''));
   card.dataset.en = item.en;   // 자동 시험용(화면에는 안 보임)
   const label = el('div', 'sc-label', opts.label || (type === 'repeat' ? '들은 대로 따라 말해 보세요' : type === 'pattern' ? '틀에 넣어 영어로 말해 보세요' : type === 'fix' ? '더 자연스럽게 고쳐 말해 보세요' : '영어로 말해 보세요'));
   const prompt = el('div', 'sc-prompt');
@@ -151,7 +172,7 @@ export function speakCard(host, item, opts = {}) {
   }
   const btn = (name, lab, fn, cls = 'icon-btn') => { const b = h('button', { class: cls, 'aria-label': lab, title: lab, onclick: fn }, icon(name)); return b; };
   const playBtn = btn('play', '듣기', () => play(false));
-  const slowBtn = btn('slow', '천천히 듣기', () => play(true));
+  const slowBtn = h('button', { class: 'icon-btn txt', 'aria-label': '천천히 듣기', title: '천천히 듣기(0.7배)', onclick: () => play(true) }, '0.7×');
   const mic = h('button', { class: 'mic', 'aria-label': '말하기' }, icon('mic', 30));
   const kbBtn = btn('keyboard', '키보드로 입력', () => toggleType());
   const hintBtn = btn('bulb', '힌트', () => { hintN = Math.min(item.en.split(/\s+/).length, hintN + 2); hintUsed = true; renderLine(); });
@@ -180,7 +201,7 @@ export function speakCard(host, item, opts = {}) {
     V.unlock();
     if (listening) { listening.stop(); return; }
     if (!V.micAvailable()) { toast(V.MIC_ERR['no-sr'], 4000); toggleType(); return; }
-    V.stop();
+    V.stop(); buzz(8);
     setMic('on'); heardBox.textContent = manual ? '다 말했으면 버튼을 한 번 더 누르세요' : ''; fb.textContent = ''; result = null; renderLine();
     listening = V.listen({ lang: 'en-US', manual, onInterim: t => {
       heardBox.textContent = t;
@@ -203,8 +224,10 @@ export function speakCard(host, item, opts = {}) {
     heardBox.append(el('span', 'heard-label', '들린 말 '), h('span', { lang: 'en' }, text));
     renderLine();
     fb.textContent = '';
+    card.classList.remove('passed', 'missed'); void card.offsetWidth;
+    card.classList.add(result.pass ? 'passed' : 'missed');
     if (result.pass) {
-      chime(true);
+      chime(true); buzz(12);
       fb.className = 'sc-fb ok';
       const msg = result.score >= 0.999 ? (tries === 1 ? '완벽해요!' : '좋아요, 해냈어요!') : '좋아요! 빠진 낱말만 한 번 더 보세요.';
       fb.append(icon('check', 18), el('span', '', msg));

@@ -29,10 +29,18 @@ function full() { document.body.classList.add('full'); tabs.textContent = ''; wi
 
 nav.full = full;
 nav.go = (tab) => { if (location.hash !== '#' + tab) location.hash = '#' + tab; else go(tab); };
+/* 수업 첫 장에 쓰는 번호(코스 안 순서)와 위치 글 */
+function lessonMeta(lesson) {
+  for (const c of nav.course.courses) {
+    let n = 0;
+    for (const u of c.units) for (const l of u.lessons) { n++; if (l.id === lesson.id) return { no: String(n).padStart(2, '0'), crumb: c.title + ' · ' + u.title }; }
+  }
+  return {};
+}
 nav.openLesson = async (lesson, courseId) => {
   full();
   for (;;) {
-    const r = await runLesson(view, lesson, { courseId });
+    const r = await runLesson(view, lesson, { courseId, meta: lessonMeta(lesson), peekNext: nextLesson });
     if (r.again) continue;
     if (r.next) { const nx = nextLesson(); if (nx) { lesson = nx.l; courseId = nx.c.id; continue; } }
     if (r.goto === 'me') { nav.go('me'); toast('Claude API 키를 넣고 설정 저장을 눌러 주세요.', 4000); return; }
@@ -88,7 +96,7 @@ function onboarding() {
 
 /* ---------- 시작 ---------- */
 (async () => {
-  view.append(el('div', 'loading', '불러오는 중…'));
+  view.append(h('div', { class: 'splash', role: 'status', 'aria-label': '불러오는 중' }, h('b', { class: 'wordmark big' }, '말문', el('i', 'dot'))));
   try {
     const [course] = await Promise.all([fetch('data/course.json', { cache: 'no-cache' }).then(r => r.json()), V.loadClips()]);
     nav.course = course;

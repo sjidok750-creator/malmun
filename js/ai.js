@@ -1,11 +1,20 @@
 /* 말문 — Claude API (대표님 휴대폰에 넣은 키로 브라우저에서 바로 부름. 키는 이 기기 localStorage 에만) */
-import { S } from './core.js';
+import { S, addUsage } from './core.js';
 
 export const MODELS = {
   'claude-opus-5-5': 'Opus 5.5 — 가장 자연스러움(기본) · 입력 $4 / 출력 $20 (100만 토큰당)',
   'claude-sonnet-5-5': 'Sonnet 5.5 — 빠르고 똑똑함 · $2 / $10',
   'claude-haiku-5-5': 'Haiku 5.5 — 가장 빠르고 저렴 · $0.10 / $0.50',
 };
+/* 100만 토큰당 미국 달러 [입력, 출력] — 2026-10 가격표 기준. 가격이 바뀌면 여기만 고친다(사용량 표시는 추정값). */
+const PRICE = { 'claude-opus-5-5': [4, 20], 'claude-sonnet-5-5': [2, 10], 'claude-haiku-5-5': [0.1, 0.5], 'claude-opus-5': [5, 25], 'claude-opus-4-8': [5, 25], 'claude-sonnet-5': [2, 10] };
+export function costOf(model, u) {
+  const key = Object.keys(PRICE).find(k => String(model || '').startsWith(k)) || 'claude-opus-5-5';
+  let [pi, po] = PRICE[key];
+  const inTok = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0), out = u.output_tokens || 0;
+  if (key === 'claude-haiku-5-5' && inTok > 100000) { pi = 0.5; po = 2.5; }
+  return { in: inTok, out, usd: (inTok * pi + out * po) / 1e6 };
+}
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.134.0/+esm';
 let sdk = null, client = null, clientKey = '';
 
@@ -23,7 +32,7 @@ export async function callJSON(prompt, schema, { onText, signal, effort = 'low',
   if (!client || clientKey !== S.apiKey) { client = new Anthropic({ apiKey: S.apiKey, dangerouslyAllowBrowser: true, maxRetries: 1 }); clientKey = S.apiKey; }
   const model = MODELS[S.model] ? S.model : 'claude-opus-5-5';
   const params = { model, max_tokens: maxTokens, output_config: { effort, format: { type: 'json_schema', schema } }, messages: [{ role: 'user', content: prompt }] };
-  let msg;
+  let msg, used = null, served = model;   // 사용량은 중간에 끊겨도(이미 과금된 만큼) 기록한다
   try {
     const stream = model === 'claude-haiku-5-5'
       ? client.messages.stream(params, { signal })
@@ -31,8 +40,12 @@ export async function callJSON(prompt, schema, { onText, signal, effort = 'low',
     let acc = '';
     for await (const ev of stream) {
       if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') { acc += ev.delta.text; if (onText) onText(acc); }
+      else if (ev.type === 'message_start' && ev.message) { used = { ...(ev.message.usage || {}) }; served = ev.message.model || model; }
+      else if (ev.type === 'message_delta' && ev.usage) used = { ...(used || {}), ...ev.usage };
     }
     msg = await stream.finalMessage();
+    if (msg.usage) used = { ...(used || {}), ...msg.usage };
+    if (msg.model) served = msg.model;
   } catch (e) {
     if (e instanceof Anthropic.APIUserAbortError) throw { code: 'cancelled' };
     if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) throw { code: 'bad_key' };
@@ -40,6 +53,8 @@ export async function callJSON(prompt, schema, { onText, signal, effort = 'low',
     if (e instanceof Anthropic.BadRequestError) throw { code: /credit/i.test(e.message || '') ? 'no_credit' : 'bad_request', message: e.message };
     if (e instanceof Anthropic.APIConnectionError) throw { code: 'offline' };
     throw { code: 'upstream_error', message: e && e.message };
+  } finally {
+    if (used) addUsage(costOf(served, used));
   }
   if (msg.stop_reason === 'refusal') throw { code: 'refused' };
   const tb = (msg.content || []).find(b => b.type === 'text');

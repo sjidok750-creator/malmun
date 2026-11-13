@@ -1,46 +1,52 @@
 /* 말문 — 수업 한 개: 배우기(선생님) → 스피킹 연습 12문장 → 단어 짝 맞추기 → AI 롤플레이 → 결과 */
 import { S, save, h, el, icon, toast, chime, addXp, addCard, lessonFinished, shuffle } from './core.js';
 import * as V from './voice.js';
-import { speakCard, talkingFace, cover, stamp, charBadge, TEACHER } from './drill.js';
+import { speakCard, talkingFace, stamp, charBadge, progressBar, countUp, TEACHER } from './drill.js';
 import { openTalk } from './talk.js';
 import { levelOf } from './ai.js';
 
-function frame(root, { step, total, title, onClose }) {
+export function frame(root, { step, total, title, onClose, phases }) {
   root.textContent = '';
   const scr = el('div', 'screen lesson');
   const top = el('div', 'l-top');
   const x = h('button', { class: 'icon-btn', 'aria-label': '그만하기', onclick: onClose }, icon('close'));
-  const bar = el('div', 'progress'); const fill = el('i'); fill.style.width = Math.round((step / total) * 100) + '%'; bar.append(fill);
-  top.append(x, bar);
+  top.append(x, progressBar(step, total, phases));
   const body = el('div', 'l-body');
   if (title) body.append(el('div', 'l-kicker', title));
   scr.append(top, body); root.append(scr);
   return body;
 }
 
-export function runLesson(root, lesson, { courseId, mode = 'full' } = {}) {
+export function runLesson(root, lesson, { courseId, meta = {}, peekNext } = {}) {
   return new Promise(resolveLesson => {
-    const total = 3 + lesson.practice.length + 2;
+    const phases = [lesson.learn.length, lesson.practice.length, 1, 1];
+    const total = phases.reduce((a, b) => a + b, 0);
     let step = 0, quit = false, firstOk = 0, drills = 0, xp = 0;
     const level = levelOf(courseId);
     const close = () => {
       if (!confirm('수업을 그만할까요? 진행한 내용은 저장되지 않아요(복습 카드와 XP 는 남아요).')) return;
       quit = true; V.stop(); V.abortListen(); resolveLesson({ quit: true });
     };
-    const F = (title) => frame(root, { step, total, title, onClose: close });
+    const F = (title) => frame(root, { step, total, title, onClose: close, phases });
 
+    /* 수업 첫 장: 책의 장(章) 머리처럼 — 큰 번호 · 제목 · 오늘의 표현 미리 보기 · 순서, 시작 버튼은 아래에 붙어 있음 */
     async function intro() {
       root.textContent = '';
       const s = el('div', 'screen l-intro');
-      const cv = cover('intro-img');
-      cv.append(h('button', { class: 'icon-btn close-tl', 'aria-label': '닫기', onclick: () => resolveLesson({ quit: true }) }, icon('close')));
-      s.append(cv, el('div', 'kicker', '오늘 배울 것'), el('h1', '', lesson.title), el('p', 'goal', lesson.goal_ko));
-      const steps = el('ol', 'steps');
-      [['배우기', '핵심 표현 3개'], ['스피킹 연습', lesson.practice.length + '문장 말하기'], ['단어', '짝 맞추기'], ['롤플레이', 'AI 와 미션 대화']].forEach(([a, b], i) => steps.append(h('li', null, el('i', 'num', '0' + (i + 1)), h('b', null, a), el('span', '', b))));
-      s.append(steps);
-      const go = h('button', { class: 'btn primary wide big' }, '시작하기');
-      const listenBtn = h('button', { class: 'btn ghost wide' }, icon('play', 16), ' 듣기 모드 — 말하지 않고 듣기만');
-      s.append(go, listenBtn, el('p', 'fine', '선생님 목소리는 AI 로 만든 목소리예요.'));
+      s.append(h('div', { class: 'li-top' }, h('button', { class: 'icon-btn', 'aria-label': '닫기', onclick: () => resolveLesson({ quit: true }) }, icon('close')),
+        h('span', { class: 'li-with' }, talkingFace(30), 'with ' + 'Yuna')));
+      s.append(h('div', { class: 'li-head' }, el('div', 'kicker', meta.crumb || '나만의 수업'), h('div', { class: 'li-no', 'aria-hidden': 'true' }, meta.no || 'My'),
+        el('h1', '', lesson.title), el('p', 'goal', lesson.goal_ko)));
+      const ph = el('div', 'li-phrases');
+      ph.append(el('h3', '', '오늘의 표현'));
+      lesson.learn.forEach(x => ph.append(h('div', { class: 'li-ph' }, h('div', { class: 'en', lang: 'en' }, x.en), el('div', 'ko', x.ko))));
+      s.append(ph);
+      const steps = el('ol', 'steps flow');
+      [['배우기', lesson.learn.length + '문장'], ['스피킹 연습', lesson.practice.length + '문장'], ['단어', '짝 맞추기'], ['롤플레이', '미션 3개']].forEach(([a, b], i) => steps.append(h('li', null, el('i', 'num', '0' + (i + 1)), h('b', null, a), el('span', '', b))));
+      s.append(steps, el('p', 'fine', '유나의 목소리는 AI 로 만든 목소리예요.'));
+      const go = h('button', { class: 'btn primary big' }, '시작하기');
+      const listenBtn = h('button', { class: 'btn ghost big', title: '말하지 않고 듣기만 해요' }, icon('headphones', 18), '듣기 모드');
+      s.append(h('div', { class: 'l-cta' }, listenBtn, go));
       root.append(s);
       const pick = await new Promise(r => { go.addEventListener('click', () => { V.unlock(); r('go'); }, { once: true }); listenBtn.addEventListener('click', () => { V.unlock(); r('listen'); }, { once: true }); });
       if (pick === 'listen') { await runListen(root, lesson); quit = true; resolveLesson({ quit: true, listened: true }); }
@@ -55,7 +61,7 @@ export function runLesson(root, lesson, { courseId, mode = 'full' } = {}) {
         t.append(talkingFace(44), h('div', null, el('div', 'tname', TEACHER.name), bubble));
         b.append(t);
         if (it.pattern) b.append(h('div', { class: 'pattern-chip' }, el('i', '', '틀'), h('span', { lang: 'en' }, it.pattern)));
-        const r = speakCard(b, { type: 'repeat', en: it.en, ko: it.ko, alts: [] }, { autoPlay: false, label: '유나를 따라 말해 보세요', showKo: true });
+        const r = speakCard(b, { type: 'repeat', en: it.en, ko: it.ko, alts: [] }, { autoPlay: false, label: '유나를 따라 말해 보세요', showKo: true, quote: true });
         (async () => { if (await V.say(it.note_ko, { lang: 'ko', voice: TEACHER.voice })) await V.say(it.en, { lang: 'en', voice: TEACHER.voice }); })();
         const res = await r;
         addCard(it.en, it.ko, lesson.id);
@@ -140,7 +146,9 @@ export function runLesson(root, lesson, { courseId, mode = 'full' } = {}) {
       const s = el('div', 'screen result');
       s.append(stamp(stars), el('h2', '', '수업 완료!'), el('p', 'sub', lesson.title));
       const g = el('div', 'res-grid');
-      g.append(h('div', null, h('b', null, '+' + xp), el('span', '', 'XP')), h('div', null, h('b', null, Math.round(ratio * 100) + '%'), el('span', '', '한 번에 맞힘')),
+      const nXp = h('b', null, '+' + xp), nPct = h('b', null, Math.round(ratio * 100) + '%');
+      setTimeout(() => { countUp(nXp, xp, { prefix: '+' }); countUp(nPct, Math.round(ratio * 100), { suffix: '%' }); }, 350);
+      g.append(h('div', null, nXp, el('span', '', 'XP')), h('div', null, nPct, el('span', '', '한 번에 맞힘')),
         h('div', null, h('b', null, missionsAll ? mDone + '/' + missionsAll : '–'), el('span', '', '미션')), h('div', { class: 'flame' + (info.grew ? ' grew' : '') }, h('b', null, String(info.streak)), el('span', '', '일 연속')));
       s.append(g);
       if (info.revived) s.append(el('p', 'good', '불꽃을 되살렸어요! 연속 기록이 이어집니다.'));
@@ -170,7 +178,11 @@ export function runLesson(root, lesson, { courseId, mode = 'full' } = {}) {
       } }, t)));
       diffBox.append(seg, rec);
       s.append(diffBox);
-      const home = h('button', { class: 'btn primary wide big', onclick: () => resolveLesson({ done: true, stars }) }, '확인');
+      /* 다음 수업 미리 보기 — 누르면 바로 이어서 */
+      const nx = peekNext ? peekNext() : null;
+      if (nx && nx.l.id !== lesson.id) s.append(h('button', { class: 'next-card', onclick: () => resolveLesson({ done: true, next: true }) },
+        h('span', null, el('small', '', '다음 수업'), h('b', null, nx.l.title), el('i', '', nx.u.title)), h('em', null, '이어서', icon('arrow', 16))));
+      const home = h('button', { class: 'btn ' + (nx && nx.l.id !== lesson.id ? 'ghost' : 'primary') + ' wide big', onclick: () => resolveLesson({ done: true, stars }) }, '확인');
       const again = h('button', { class: 'btn ghost wide', onclick: () => resolveLesson({ done: true, again: true }) }, '다시 하기');
       s.append(home, again);
       root.append(s);
