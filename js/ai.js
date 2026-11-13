@@ -80,10 +80,41 @@ export function errText(e) {
 
 /* ---------- 학습자 기억(최근 실수) ---------- */
 function learnerLines() {
-  const lines = [];
+  const lines = [], pf = S.profile || {}, parts = [];
+  if (pf.level_ko) parts.push('level: ' + pf.level_ko);
+  if (pf.weak && pf.weak.length) parts.push('recurring weak points: ' + pf.weak.join('; '));
+  if (pf.interests && pf.interests.length) parts.push('interests: ' + pf.interests.join(', '));
+  if (pf.note_ko) parts.push('teaching note: ' + pf.note_ko);
+  if (parts.length) lines.push('LEARNER PROFILE from earlier sessions (use it quietly, never read it out): ' + parts.join(' | '),
+    '- Now and then give the learner a natural chance to practise one weak point, and bring up their interests.');
   const m = S.mistakes.slice(-6).map(x => x.why).filter(Boolean);
-  if (m.length) lines.push('RECENT WEAK POINTS (from earlier sessions; use quietly, never read out): ' + m.join(' / '));
+  if (m.length) lines.push('RECENT CORRECTIONS (use quietly, never read out): ' + m.join(' / '));
   return lines;
+}
+
+/* ---------- 대화 리포트 + 학습자 기억 갱신(프리토킹·내 롤플레이가 끝난 뒤 한 번) ---------- */
+export const REPORT_SCHEMA = obj({
+  summary_ko: STR, praise_ko: STR, focus_ko: STR,
+  expressions: arr(EnKo),
+  profile: obj({ level_ko: STR, weak: arr(STR), interests: arr(STR), note_ko: STR }),
+});
+export function reportPrompt(rp, log, profile) {
+  const hist = log.map(t => (t.who === 'me' ? 'Learner' : rp.ai_name) + ': ' + t.text + (t.fix ? `   [you suggested: ${t.fix.better}]` : ''));
+  const prev = profile && (profile.level_ko || (profile.weak || []).length || (profile.interests || []).length) ? JSON.stringify({ level_ko: profile.level_ko, weak: profile.weak, interests: profile.interests, note_ko: profile.note_ko }) : '(none yet)';
+  return [
+    `You are ${rp.ai_name}, the learner's English conversation partner in a Korean speaking-practice app. The conversation below has just ended. Write a short, warm report in Korean (해요체), speaking to the learner directly as ${rp.ai_name}.`,
+    '- summary_ko: 1–2 sentences on what you talked about and how it went.',
+    '- praise_ko: one concrete thing the learner did well; quote their own English words if you can.',
+    '- focus_ko: the single most useful thing to practise next time, with one short English example in quotation marks.',
+    '- expressions: 2–3 natural spoken English expressions worth keeping from this talk (something you said, or a better way to say what the learner tried), each with its Korean meaning. Short and reusable.',
+    '- profile: the updated learner profile for future sessions. level_ko: a short Korean phrase for their speaking level. weak: up to 4 recurring weak points, short Korean phrases, merged with the previous profile (drop ones that look fixed). interests: up to 5 topics the learner likes, short Korean words. note_ko: one Korean sentence of teaching advice for next time.',
+    '- Be specific and kind, no generic praise, and do not invent things that are not in the conversation.',
+    '',
+    'Previous learner profile: ' + prev,
+    '',
+    'Conversation (oldest first):',
+    ...hist,
+  ].join('\n');
 }
 const LEVEL = { c1: 'beginner (A1–A2): use short, simple sentences and common words.', c2: 'pre-intermediate to intermediate (A2–B1): natural everyday English, not too fast or idiomatic.' };
 export const levelOf = courseId => LEVEL[courseId] || LEVEL[S.start] || LEVEL.c1;

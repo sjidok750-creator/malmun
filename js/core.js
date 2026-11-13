@@ -15,6 +15,9 @@ const DEF = {
   freezes: 0, frozen: [],   // 불꽃 지키기: 가진 개수, 쓴 날짜
   usage: { days: {}, total: 0 },   // API 사용량(이 기기에서 잰 추정): 날짜 → { calls, in, out, usd }
   budget: 20,               // 월 예산(달러, 표시·알림용. 0 = 없음)
+  profile: {},              // 유나가 기억하는 나: { level_ko, weak[], interests[], note_ko, at } — 대화 리포트가 갱신
+  report: true,             // 프리토킹·내 롤플레이가 끝나면 리포트 만들기(API 한 번 더)
+  callAuto: true,           // 유나와 통화 화면에서 자동 듣기
   done: {},               // lessonId → { at, stars, best }
   days: {},                 // 'YYYY-MM-DD' → { xp, lessons }
   repaired: [],             // 되살린 날짜

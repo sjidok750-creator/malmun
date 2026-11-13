@@ -531,6 +531,75 @@ h3.sec, .result h3, .takeaways h3, .diff h3 { text-align: left; font: 700 13px/1
 .next-card em { font-style: normal; display: inline-flex; align-items: center; gap: 5px; height: 38px; padding: 0 12px 0 15px; border-radius: 999px; background: var(--red); font-weight: 700; font-size: 14px; flex: none; }
 .result > .next-card + .btn.big { margin-top: 12px; }
 
+/* ── 유나와 통화(프리토킹): 사진이 화면 가득, 대화는 아래에서 자막처럼 떠오른다 ── */
+.talk.call { position: fixed; top: 0; bottom: 0; left: 50%; width: 100%; max-width: 520px; height: auto; transform: translateX(-50%); z-index: 10; overflow: hidden;
+  background: #111214; color: #fff; padding: calc(var(--safe-t) + 10px) var(--pad) calc(18px + var(--safe-b)); animation: callIn .35s ease both; }
+@keyframes callIn { from { opacity: 0; } }
+.talk.call > * { position: relative; z-index: 1; }
+.call-bg { position: absolute !important; z-index: 0 !important; inset: 0 0 auto 0; height: 66%; background: #111214; }
+.call-bg img { object-position: 50% 28%; animation: breathe 16s ease-in-out infinite alternate; transform-origin: 50% 40%; }
+@keyframes breathe { to { transform: scale(1.06); } }
+.call-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(17, 18, 20, .5) 0%, rgba(17, 18, 20, 0) 20%, rgba(17, 18, 20, 0) 48%, rgba(17, 18, 20, .82) 82%, #111214 100%); }
+.talk.call .talk-head { border: 0; padding-bottom: 0; }
+.talk.call .talk-head > .icon-btn { color: #fff; }
+.talk.call .who .av { width: auto !important; height: auto !important; background: none; order: 2; align-self: center; }
+.talk.call .who .av img, .talk.call .who .av::after { display: none; }
+.talk.call .who .av .eq { position: static; border: 0; width: 20px; height: 20px; }
+.talk.call .who b { font-size: 23px; color: #fff; text-shadow: 0 1px 10px rgba(0, 0, 0, .45); }
+.talk.call .who small { color: rgba(255, 255, 255, .78); text-shadow: 0 1px 8px rgba(0, 0, 0, .5); }
+.talk.call .chip-btn { border-color: rgba(255, 255, 255, .4); color: #fff; background: rgba(17, 18, 20, .3); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.talk.call .chip-btn[aria-pressed="true"] { background: #fff; color: var(--ink); border-color: #fff; }
+.talk.call .msgs { flex: 0 1 auto; max-height: 43%; margin-top: auto; padding: 90px 0 14px; gap: 14px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 110px); mask-image: linear-gradient(to bottom, transparent, #000 110px); }
+/* 지난 말은 흐리게, 글만(뜻·버튼은 가장 최근 것에만) */
+.talk.call .msg:not(:nth-last-child(-n+2)) .tools, .talk.call .msg:not(:nth-last-child(-n+2)) .ko, .talk.call .msg:not(:nth-last-child(-n+2)) .fix { display: none; }
+.talk.call .msg:not(:nth-last-child(-n+2)) .t { font-size: 16px !important; }
+.talk.call .fix { background: rgba(255, 255, 255, .1); color: #fff; border-left-color: #6FCF9F; }
+.talk.call .fix-l { color: #8FE0B6; } .talk.call .fix-w { color: rgba(255, 255, 255, .72); }
+.talk.call .msg.me .fix .mini { border-color: rgba(255, 255, 255, .3); color: rgba(255, 255, 255, .88); }
+.talk.call .scene { background: none; border: 0; padding: 0; text-align: center; color: rgba(255, 255, 255, .55); font-size: 12.5px; }
+.talk.call .scene .scene-t { font-size: 12.5px; } .talk.call .scene .scene-r { display: none; }
+.talk.call .msg { opacity: .42; transition: opacity .3s; }
+.talk.call .msg:nth-last-child(-n+2) { opacity: 1; }
+.talk.call .msg.them { background: none; border: 0; padding: 0; max-width: 100%; }
+.talk.call .msg.them .t { font-size: 20px; line-height: 1.4; color: #fff; text-shadow: 0 1px 12px rgba(0, 0, 0, .55); }
+.talk.call .msg.them .t[lang="en"] { font-size: 24px; line-height: 1.32; }
+.talk.call .msg.them .ko { color: rgba(255, 255, 255, .72); font-size: 14px; }
+.talk.call .mini { border-color: rgba(255, 255, 255, .3); color: rgba(255, 255, 255, .88); }
+.talk.call .msg.me { background: rgba(255, 255, 255, .15); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.talk.call .msg.sys { color: #FFB9AD; }
+.talk.call .typing b { background: rgba(255, 255, 255, .8); }
+.talk.call .live { color: #fff; }
+.talk.call .talk-bar { border-top-color: rgba(255, 255, 255, .16); }
+.talk.call .talk-bar .icon-btn { background: rgba(255, 255, 255, .13); border-color: transparent; color: #fff; }
+.talk.call .ko-btn { color: #fff; }
+.talk.call .type-box input { background: rgba(255, 255, 255, .13); border-color: rgba(255, 255, 255, .28); color: #fff; }
+.talk.call .type-box input::placeholder { color: rgba(255, 255, 255, .55); }
+.talk.call .type-box .icon-btn { background: rgba(255, 255, 255, .13); border-color: transparent; color: #fff; }
+.talk.call .mic[data-state="on"] { background: #fff; color: var(--ink); }
+
+/* ── 대화 리포트 · 유나가 기억하는 나 ── */
+.report { text-align: left; margin-top: 26px; }
+.rp-head { display: flex; align-items: center; gap: 10px; padding-bottom: 11px; border-bottom: 1.5px solid var(--ink); }
+.rp-head b { font: 700 17px var(--display); letter-spacing: -.03em; }
+.rp-wait { display: flex; align-items: center; gap: 10px; padding: 16px 0; color: var(--ink3); font-size: 13.5px; }
+.report-body { text-align: left; }
+.rp-sum { font-size: 15.5px; line-height: 1.65; margin: 14px 0 4px; }
+.rp-row { padding: 12px 0; border-top: 1px solid var(--rule); margin-top: 10px; }
+.rp-row + .rp-row { margin-top: 0; }
+.rp-row small, .rp-l { display: block; font-size: 11.5px; font-weight: 700; color: var(--ink3); }
+.rp-row p { margin: 4px 0 0; font-size: 15px; line-height: 1.6; color: var(--ink); }
+.rp-l { padding-top: 12px; border-top: 1px solid var(--rule); }
+.report + .btn { margin-top: 22px; }
+button.talk-row { width: 100%; text-align: left; }
+.rp-tag { font: 700 10.5px var(--sans); font-style: normal; color: var(--red-d); border: 1px solid currentColor; border-radius: 999px; padding: 1px 7px; margin-left: 8px; vertical-align: 2px; }
+.profile { padding-top: 4px; }
+.pf-row { display: flex; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--rule2); font-size: 14.5px; }
+.pf-row small { flex: 0 0 86px; font-size: 12px; font-weight: 600; color: var(--ink3); padding-top: 2px; }
+.pf-row span { flex: 1; line-height: 1.55; }
+.profile .mini { margin-top: 12px; }
+.empty.left { text-align: left; padding: 14px 0 0; }
+
 @media (max-width: 350px) { .mic { width: 62px; height: 62px; } .sc-ctr .icon-btn { width: 32px; height: 32px; } .sc-ctr .side { gap: 3px; } .words, .l-body > .speak-card .words { font-size: 27px; } }
 @media (min-width: 560px) { #app { box-shadow: 0 0 0 1px var(--rule); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

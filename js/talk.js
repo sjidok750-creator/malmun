@@ -1,8 +1,26 @@
 /* 말문 — AI 와 말로 하는 대화: 수업 롤플레이(미션 3개)·프리토킹·내가 만든 상황 */
 import { S, save, h, el, icon, toast, chime, addXp, addCard, sheet, cardId, usageTotal, fmtUsd } from './core.js';
 import * as V from './voice.js';
-import { callJSON, turnPrompt, TURN_SCHEMA, replyStreamer, errText, hasKey } from './ai.js';
-import { charBadge, speakCard } from './drill.js';
+import { callJSON, turnPrompt, TURN_SCHEMA, replyStreamer, errText, hasKey, REPORT_SCHEMA, reportPrompt } from './ai.js';
+import { charBadge, speakCard, cover } from './drill.js';
+
+/* 대화 리포트 내용(요약·잘한 점·다음에 연습할 것·건져 갈 표현) — 대화 끝 화면과 지난 대화 시트에서 같이 쓴다 */
+export function reportView(rep) {
+  const b = el('div', 'report-body');
+  if (rep.summary) b.append(el('p', 'rp-sum', rep.summary));
+  const row = (label, text) => (text ? h('div', { class: 'rp-row' }, el('small', '', label), el('p', '', text)) : '');
+  b.append(row('잘한 점', rep.praise), row('다음엔 이것만', rep.focus));
+  if (rep.expressions && rep.expressions.length) {
+    b.append(el('small', 'rp-l', '건져 갈 표현'));
+    rep.expressions.forEach(x => {
+      const saved = !!S.cards[cardId(x.en)];
+      b.append(h('div', { class: 'hint-row' }, h('div', null, h('div', { class: 'en', lang: 'en' }, x.en), el('div', 'ko', x.ko || '')),
+        h('button', { class: 'icon-btn', 'aria-label': '듣기', onclick: () => V.say(x.en, { lang: 'en', voice: 'F2' }) }, icon('play')),
+        h('button', { class: 'icon-btn', 'aria-label': '복습에 넣기', disabled: saved, onclick: e => { addCard(x.en, x.ko || '대화에서 건진 표현', 'saved'); e.currentTarget.disabled = true; toast('복습에 넣었어요'); } }, icon('plus'))));
+    });
+  }
+  return b;
+}
 
 /* rp: { ai_name, ai_voice, ai_role, scene_ko, user_role_ko, opener, opener_ko, missions[], useful[], title_ko }
    반환 Promise<{ missionsDone, fixes, turns, ended }> */
@@ -11,10 +29,15 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
     const voice = rp.ai_voice || 'F3';
     const missions = rp.missions || [];
     const log = [];
-    let doneM = [], busy = false, ctl = null, listening = null, finished = false, lastHints = [], handsFree = !!S.handsFree, ended = false, xpGot = 0;
+    /* 유나와는 통화 화면(사진이 화면 가득, 자막처럼 뜨는 대화, 기본이 자동 듣기) */
+    const call = !!rp.photo;
+    let doneM = [], busy = false, ctl = null, listening = null, finished = false, lastHints = [], handsFree = call ? S.callAuto !== false : !!S.handsFree, ended = false, xpGot = 0, talkRec = null;
 
     root.textContent = '';
-    const scr = el('div', 'screen talk');
+    const scr = el('div', 'screen talk' + (call ? ' call' : ''));
+    if (call) scr.append(cover('call-bg'));
+    let wake = null;   // 통화 중에는 화면이 꺼지지 않게
+    if (call && 'wakeLock' in navigator) navigator.wakeLock.request('screen').then(w => { if (ended) w.release().catch(() => {}); else wake = w; }).catch(() => {});
     const head = el('header', 'talk-head');
     const back = h('button', { class: 'icon-btn', 'aria-label': '나가기', onclick: () => endTalk(true) }, icon('back'));
     const who = el('div', 'who');
@@ -22,10 +45,10 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
     const usd0 = usageTotal(), subTitle = title || rp.title_ko || '';
     const spent = () => usageTotal() - usd0;
     const whoSub = el('small', '', subTitle);
-    const onUse = () => { if (!whoSub.isConnected) { window.removeEventListener('malmun:usage', onUse); return; } whoSub.textContent = subTitle + (spent() > 0 ? ' · API ' + fmtUsd(spent()) : ''); };
+    const onUse = () => { if (!whoSub.isConnected) { window.removeEventListener('malmun:usage', onUse); return; } whoSub.textContent = subTitle + (spent() > 0 && !rp.photo ? ' · API ' + fmtUsd(spent()) : ''); };   // 통화 화면은 제목만(금액은 끝난 뒤 요약에)
     window.addEventListener('malmun:usage', onUse);
     who.append(charBadge(rp.ai_name, voice, 38, !!rp.photo), h('div', null, h('b', null, rp.ai_name), whoSub));
-    const hf = h('button', { class: 'chip-btn', 'aria-pressed': String(handsFree), title: '내 차례가 되면 자동으로 듣기', onclick: () => { handsFree = !handsFree; S.handsFree = handsFree; save(); hf.setAttribute('aria-pressed', String(handsFree)); toast(handsFree ? '자동 듣기 켬 — 답을 다 들으면 바로 마이크가 켜져요' : '자동 듣기 끔'); } }, '자동 듣기');
+    const hf = h('button', { class: 'chip-btn', 'aria-pressed': String(handsFree), title: '내 차례가 되면 자동으로 듣기', onclick: () => { handsFree = !handsFree; if (call) S.callAuto = handsFree; else S.handsFree = handsFree; save(); hf.setAttribute('aria-pressed', String(handsFree)); toast(handsFree ? '자동 듣기 켬 — 답을 다 들으면 바로 마이크가 켜져요' : '자동 듣기 끔'); } }, '자동 듣기');
     const endBtn = h('button', { class: 'chip-btn', onclick: () => endTalk(false) }, '끝내기');
     head.append(back, who, h('div', { class: 'head-r' }, hf, endBtn));
     const mBox = el('div', 'missions');
@@ -189,7 +212,8 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
       const fixes = log.filter(m => m.who === 'me' && m.fix).map(m => ({ said: m.text, ...m.fix }));
       if (leave && !silent && turns && !confirm('대화를 끝낼까요? 지금까지 한 내용은 저장돼요.')) return;
       ended = true;
-      if (turns) { S.talks.unshift({ at: Date.now(), kind, title: rp.title_ko || title || rp.ai_name, turns, fixes: fixes.length, missions: doneM.length + '/' + missions.length, usd: +spent().toFixed(5) }); S.talks = S.talks.slice(0, 40); save(); }
+      if (wake) { wake.release().catch(() => {}); wake = null; }
+      if (turns) { talkRec = { at: Date.now(), kind, title: rp.title_ko || title || rp.ai_name, turns, fixes: fixes.length, missions: doneM.length + '/' + missions.length, usd: +spent().toFixed(5) }; S.talks.unshift(talkRec); S.talks = S.talks.slice(0, 40); save(); }
       if (silent || (leave && !turns)) { resolveTalk({ missionsDone: doneM, fixes, turns, ended: false, xp: xpGot }); return; }
       summary(turns, fixes);
     }
@@ -208,8 +232,31 @@ export function openTalk(root, { rp, level, kind = 'lesson', title }) {
         fixes.forEach(f => s.append(h('div', { class: 'fix-card' }, h('div', { class: 'said' }, f.said), h('div', { class: 'better', lang: 'en' }, f.better), f.why ? el('div', 'why', f.why) : '',
           h('button', { class: 'mini', onclick: () => V.say(f.better, { lang: 'en', voice: 'F2' }) }, icon('play', 14), '듣기'))));
       } else if (turns) s.append(el('p', 'good', '고칠 문장이 없었어요. 잘했어요!'));
+      /* 프리토킹·내 롤플레이는 상대가 대화를 돌아보는 리포트를 쓴다(수업 롤플레이는 수업 결과가 대신함) */
+      if (kind !== 'lesson' && turns >= 2 && hasKey() && S.report !== false) {
+        const box = h('div', { class: 'report' }, h('div', { class: 'rp-head' }, charBadge(rp.ai_name, voice, 34, call), h('b', null, call ? '유나의 리포트' : rp.ai_name + '의 리포트')),
+          h('div', { class: 'rp-wait' }, h('i', { class: 'typing' }, el('b'), el('b'), el('b')), el('span', '', '대화를 돌아보는 중')));
+        s.append(box);
+        makeReport(box);
+      }
       s.append(h('button', { class: 'btn primary wide', onclick: () => resolveTalk({ missionsDone: doneM, fixes, turns, ended: true, xp: xpGot }) }, '계속'));
       root.append(s);
+    }
+    async function makeReport(box) {
+      const str = v => (typeof v === 'string' ? v.trim() : '');
+      try {
+        const r = await callJSON(reportPrompt(rp, log, S.profile), REPORT_SCHEMA, { effort: 'low' });
+        const rep = { summary: str(r.summary_ko), praise: str(r.praise_ko), focus: str(r.focus_ko),
+          expressions: (Array.isArray(r.expressions) ? r.expressions : []).filter(x => x && str(x.en)).slice(0, 3).map(x => ({ en: str(x.en), ko: str(x.ko) })) };
+        const p = r.profile || {}, old = S.profile || {};
+        const list = (a, n) => (Array.isArray(a) ? a : []).map(str).filter(Boolean).slice(0, n);
+        S.profile = { level_ko: str(p.level_ko) || old.level_ko || '', weak: list(p.weak, 4), interests: list(p.interests, 5), note_ko: str(p.note_ko) || old.note_ko || '', at: Date.now() };
+        if (talkRec) { talkRec.report = rep; talkRec.usd = +spent().toFixed(5); }
+        save();
+        if (box.isConnected) box.querySelector('.rp-wait').replaceWith(reportView(rep));
+      } catch (e) {
+        if (box.isConnected) box.querySelector('.rp-wait').replaceWith(el('p', 'note', '리포트를 만들지 못했어요. ' + errText(e)));
+      }
     }
 
     /* 첫마디 */

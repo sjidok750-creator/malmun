@@ -4,6 +4,7 @@ import * as V from './voice.js';
 import { speakCard, talkingFace, charBadge, cover, avatar, progressBar, TEACHER } from './drill.js';
 import { MODELS, callJSON, errText, hasKey, levelOf, QA_SCHEMA, qaPrompt, RP_SCHEMA, rpPrompt, LESSON_SCHEMA, lessonPrompt } from './ai.js';
 import { usageStrip } from './usage.js';
+import { reportView } from './talk.js';
 
 export const nav = {};   // main.js 가 채움: openLesson(lesson, courseId), openCheck(course), openTalk(rp, opts), go(tab), course
 
@@ -195,7 +196,7 @@ export function tutor(root) {
   else s.append(h('div', { class: 'banner' }, icon('sparkle', 18), h('div', null, h('b', null, 'AI 튜터는 Claude API 키가 필요해요'), el('div', '', '내 정보 → 설정에서 키를 넣어 주세요. 키는 이 기기에만 저장돼요.'))));
   const grid = el('div', 'tgrid');
   const hero = h('button', { class: 'ttile hero', onclick: () => pickTopic() }, cover('tt-img'),
-    h('span', { class: 'tt-t' }, el('small', '', 'FREE TALK'), h('b', null, '프리토킹'), el('span', '', '유나와 주제를 골라 자유롭게 이야기해요'), h('em', null, '주제 고르기', icon('arrow', 16))));
+    h('span', { class: 'tt-t' }, el('small', '', 'FREE TALK'), h('b', null, '프리토킹'), el('span', '', '유나와 통화하듯 자유롭게 이야기해요'), h('em', null, '주제 고르기', icon('arrow', 16))));
   const tile = (n, t, d, fn) => h('button', { class: 'ttile', onclick: fn }, el('i', 'num', n), h('span', { class: 'tt-t' }, h('b', null, t), el('small', '', d)), icon('arrow', 16));
   grid.append(hero,
     tile('01', '롤플레이 만들기', '내가 겪을 상황을 적으면 상대·미션을 만들어요', () => makeRp()),
@@ -211,7 +212,7 @@ export function tutor(root) {
   }
   if (S.talks.length) {
     s.append(el('h3', 'sec', '지난 대화'));
-    S.talks.slice(0, 8).forEach(t => s.append(h('div', { class: 'talk-row' }, h('b', null, t.title), el('small', '', `${new Date(t.at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })} · 말 ${t.turns}번 · 고침 ${t.fixes}개` + (t.missions && t.missions !== '0/0' ? ' · 미션 ' + t.missions : '') + (t.usd ? ' · API ' + fmtUsd(t.usd) : '')))));
+    S.talks.slice(0, 8).forEach(t => s.append(h(t.report ? 'button' : 'div', { class: 'talk-row' + (t.report ? ' has-report' : ''), onclick: t.report ? () => sheet('대화 리포트', reportView(t.report)) : null }, h('b', null, t.title, t.report ? el('i', 'rp-tag', '리포트') : ''), el('small', '', `${new Date(t.at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })} · 말 ${t.turns}번 · 고침 ${t.fixes}개` + (t.missions && t.missions !== '0/0' ? ' · 미션 ' + t.missions : '') + (t.usd ? ' · API ' + fmtUsd(t.usd) : '')))));
   }
   root.append(s);
 
@@ -352,6 +353,17 @@ export function me(root) {
   s.append(el('h3', 'sec', '최근 5주'), cal,
     h('div', { class: 'cal-key' }, el('i', 'lv2'), '목표 달성', el('i', 'lv1'), '수업함', el('i', 'frz'), '불꽃 지키기', el('i', 'rep'), '되살림'));
 
+  /* 유나가 기억하는 나: 대화 리포트가 갱신하는 학습자 기억(다음 대화에 쓰임). 지울 수 있다 */
+  const pf = S.profile || {};
+  s.append(el('h3', 'sec', '유나가 기억하는 나'));
+  if (pf.level_ko || (pf.weak || []).length || (pf.interests || []).length) {
+    const box = el('div', 'profile');
+    const line = (label, text) => (text ? h('div', { class: 'pf-row' }, el('small', '', label), el('span', '', text)) : '');
+    box.append(line('말하기 수준', pf.level_ko), line('자주 틀리는 것', (pf.weak || []).join(' · ')), line('관심사', (pf.interests || []).join(' · ')), line('다음에는', pf.note_ko),
+      h('button', { class: 'mini', onclick: () => { if (confirm('유나가 기억하는 내용을 지울까요?')) { S.profile = {}; save(); me(root); } } }, icon('trash', 13), '기억 지우기'));
+    s.append(box);
+  } else s.append(el('p', 'empty left', '프리토킹을 하고 나면 유나가 내 수준과 자주 틀리는 것, 관심사를 기억해서 다음 대화에 써요.'));
+
   s.append(el('h3', 'sec', 'API 사용량'), usageStrip());
 
   s.append(el('h3', 'sec', '설정'));
@@ -365,6 +377,7 @@ export function me(root) {
   const strict = h('select', null, ...[['loose', '느슨 — 낱말 몇 개 빠져도 통과'], ['normal', '보통'], ['strict', '엄격 — 관사·이름까지 정확히']].map(([v, t2]) => h('option', { value: v, selected: S.strict === v }, t2)));
   const turn = h('select', null, ...[['auto', '자동 — 말을 멈추면 끝'], ['manual', '직접 — 버튼을 다시 눌러 끝']].map(([v, t2]) => h('option', { value: v, selected: S.turnMode === v }, t2)));
   const fbAt = h('select', null, ...[['now', '바로 — 말할 때마다'], ['end', '대화 끝에 모아서']].map(([v, t2]) => h('option', { value: v, selected: S.feedbackAt === v }, t2)));
+  const report = h('input', { type: 'checkbox', checked: S.report !== false });
   const row = (label, ctl, note) => h('label', { class: 'set-row' }, h('span', null, label, note ? el('small', '', note) : ''), ctl);
   set.append(
     row('Claude API 키', keyIn, '롤플레이·튜터에만 쓰여요. 이 기기에만 저장되고 다른 곳에 보내지 않아요.'),
@@ -374,12 +387,13 @@ export function me(root) {
     row('말하기 판정', strict, '연습·복습에서 몇 낱말까지 봐줄지'),
     row('말 끝내기', turn, '말하다 자주 쉬면 「직접」이 편해요'),
     row('대화 교정 보기', fbAt),
+    row('대화 리포트', report, '프리토킹이 끝나면 유나가 돌아봐 줘요(API 한 번 더)'),
     row('한국어 뜻 보이기', showKo),
     row('대화 자동 듣기', hands, '상대가 말을 마치면 마이크가 바로 켜져요'),
   );
   const saveBtn = h('button', { class: 'btn primary wide', onclick: () => {
     S.apiKey = keyIn.value.trim(); S.model = model.value; S.dailyXp = +goal.value; S.rate = +rate.value; S.showKo = showKo.checked; S.handsFree = hands.checked;
-    S.strict = strict.value; S.turnMode = turn.value; S.feedbackAt = fbAt.value; save(); toast('저장했어요'); me(root);
+    S.strict = strict.value; S.turnMode = turn.value; S.feedbackAt = fbAt.value; S.report = report.checked; save(); toast('저장했어요'); me(root);
   } }, '설정 저장');
   set.append(saveBtn);
   s.append(set);
